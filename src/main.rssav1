@@ -1,0 +1,127 @@
+mod backend;
+mod core;
+
+use anyhow::Result;
+use backend::sdrplay::SdrplayBackend;
+use core::{IqReblocker, IQ_BLOCK_SIZE};
+use std::io;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
+use std::thread;
+
+fn main() -> Result<()> {
+    println!("=================================");
+    println!(" SDR Universal");
+    println!("=================================");
+
+    let mut sdr = SdrplayBackend::new();
+
+    println!("Ouverture de l'API SDRplay...");
+
+    sdr.connect()?;
+
+    println!();
+    println!("API SDRplay ouverte.");
+    println!("Connexion active : {}", sdr.is_connected());
+
+    let iq_rx = sdr.take_iq_receiver().expect("Récepteur IQ déjà récupéré");
+
+    let output_blocks = Arc::new(AtomicU64::new(0));
+    let output_samples = Arc::new(AtomicU64::new(0));
+
+    let output_blocks_thread = Arc::clone(&output_blocks);
+    let output_samples_thread = Arc::clone(&output_samples);
+
+    let iq_thread = thread::spawn(move || {
+        let mut reblocker = IqReblocker::new();
+        let mut first_block = true;
+
+        while let Ok(block) = iq_rx.recv() {
+            let output = reblocker.push(
+                &block.samples,
+                block.timestamp,
+                block.center_frequency_hz,
+                block.sample_rate,
+            );
+
+            for iq_block in output {
+                output_blocks_thread.fetch_add(1, Ordering::Relaxed);
+                output_samples_thread.fetch_add(iq_block.len() as u64, Ordering::Relaxed);
+
+                if first_block {
+                    first_block = false;
+
+                    println!();
+                    println!("=================================");
+                    println!(" IQ reblocké -> Core");
+                    println!("=================================");
+                    println!("  sequence       : {}", iq_block.sequence);
+                    println!("  fréquence      : {} Hz", iq_block.center_frequency_hz);
+                    println!("  sample rate    : {} Hz", iq_block.sample_rate);
+                    println!("  échantillons   : {}", iq_block.len());
+
+                    if let Some(sample) = iq_block.samples.first() {
+                        println!("  premier I      : {:.6}", sample.i);
+                        println!("  premier Q      : {:.6}", sample.q);
+                    }
+
+                    println!();
+                }
+
+                let count = output_blocks_thread.load(Ordering::Relaxed);
+
+                if count % 10000 == 0 {
+                    println!(
+                        "IQ Core : {} blocs de {} / {} échantillons",
+                        count,
+                        IQ_BLOCK_SIZE,
+                        output_samples_thread.load(Ordering::Relaxed)
+                    );
+                }
+            }
+        }
+
+        reblocker.pending_samples()
+    });
+
+    println!();
+    println!("Appuyer sur Entrée pour fermer...");
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    let dropped = sdr.dropped_iq_blocks();
+
+    drop(sdr);
+
+    let pending_samples = iq_thread.join().expect("Thread IQ interrompu");
+
+    let blocks = output_blocks.load(Ordering::Relaxed);
+    let samples = output_samples.load(Ordering::Relaxed);
+
+    println!();
+    println!("=================================");
+    println!(" Statistiques IQ reblocké");
+    println!("=================================");
+    println!("  taille bloc    : {}", IQ_BLOCK_SIZE);
+    println!("  blocs sortis   : {}", blocks);
+    println!("  échantillons   : {}", samples);
+    println!("  blocs SDR perdus : {}", dropped);
+    println!("  samples en attente : {}", pending_samples);
+
+    if dropped == 0 {
+        println!();
+        println!("  RESULTAT : aucune perte SDRplay.");
+    }
+
+    if pending_samples > 0 {
+        println!(
+            "  INFO : {} échantillons restent dans le buffer au moment de l'arrêt.",
+            pending_samples
+        );
+    }
+
+    Ok(())
+}

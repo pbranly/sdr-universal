@@ -1,0 +1,87 @@
+mod backend;
+mod core;
+
+use anyhow::Result;
+
+use core::{Capabilities, Command, CommandResult, GainMode, Receiver, ReceiverMode, ReceiverState};
+
+fn main() -> Result<()> {
+    println!("=================================");
+    println!(" SDR Universal - test Core");
+    println!("=================================");
+    println!();
+
+    let state = ReceiverState::default();
+    let capabilities = Capabilities::default();
+    let mut receiver = Receiver::new(state, capabilities);
+    println!("État initial :");
+    println!("{:#?}", receiver.state());
+    println!();
+    println!("--- SetFrequency(145000000) ---");
+    match receiver.handle_command(Command::SetFrequency(145_000_000))? {
+        CommandResult::Event(event) => {
+            println!("Événement : {:?}", event);
+        }
+        other => {
+            println!("Résultat : {:?}", other);
+        }
+    }
+    println!();
+    println!("--- SetMode(Nfm) ---");
+    match receiver.handle_command(Command::SetMode(ReceiverMode::Nfm))? {
+        CommandResult::Event(event) => {
+            println!("Événement : {:?}", event);
+        }
+        other => {
+            println!("Résultat : {:?}", other);
+        }
+    }
+    println!();
+    println!("--- SetGain(40.0) ---");
+    match receiver.handle_command(Command::SetGain(40.0))? {
+        CommandResult::Event(event) => {
+            println!("Événement : {:?}", event);
+        }
+        other => {
+            println!("Résultat : {:?}", other);
+        }
+    }
+    println!();
+    println!("--- SetGainMode(Manual) ---");
+    match receiver.handle_command(Command::SetGainMode(GainMode::Manual))? {
+        CommandResult::Event(event) => {
+            println!("Événement : {:?}", event);
+        }
+        other => {
+            println!("Résultat : {:?}", other);
+        }
+    }
+    println!();
+    println!("--- SetSampleRate(2000000) ---");
+    match receiver.handle_command(Command::SetSampleRate(2_000_000))? {
+        CommandResult::Event(event) => {
+            println!("Événement : {:?}", event);
+        }
+        other => {
+            println!("Résultat : {:?}", other);
+        }
+    }
+    println!();
+    println!("--- StartIq ---");
+    match receiver.handle_command(Command::StartIq)? {
+        CommandResult::Event(event) => {
+            println!("Événement : {:?}", event);
+        }
+        other => {
+            println!("Résultat : {:?}", other);
+        }
+    }
+    println!();
+    println!("=================================");
+    println!(" État final du Core");
+    println!("=================================");
+    println!("{:#?}", receiver.state());
+    println!();
+    println!("Test Core terminé.");
+    Ok(())
+}

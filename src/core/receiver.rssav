@@ -1,0 +1,24 @@
+use super::{Capabilities, ReceiverState};
+
+#[derive(Debug)]
+pub struct Receiver {
+    state: ReceiverState,
+    capabilities: Capabilities,
+}
+
+impl Receiver {
+    pub fn new(state: ReceiverState, capabilities: Capabilities) -> Self {
+        Self {
+            state,
+            capabilities,
+        }
+    }
+
+    pub fn state(&self) -> &ReceiverState {
+        &self.state
+    }
+
+    pub fn capabilities(&self) -> &Capabilities {
+        &self.capabilities
+    }
+}

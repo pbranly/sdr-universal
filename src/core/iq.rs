@@ -1,0 +1,85 @@
+#[derive(Debug, Clone, Copy)]
+pub struct IqSample {
+    pub i: f32,
+    pub q: f32,
+}
+
+#[derive(Debug)]
+pub struct IqBlock {
+    pub sequence: u64,
+    pub timestamp: u64,
+    pub center_frequency_hz: u64,
+    pub sample_rate: u32,
+    pub samples: Vec<IqSample>,
+}
+
+impl IqBlock {
+    pub fn new(
+        sequence: u64,
+        timestamp: u64,
+        center_frequency_hz: u64,
+        sample_rate: u32,
+        samples: Vec<IqSample>,
+    ) -> Self {
+        Self {
+            sequence,
+            timestamp,
+            center_frequency_hz,
+            sample_rate,
+            samples,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.samples.len()
+    }
+}
+
+pub const IQ_BLOCK_SIZE: usize = 4096;
+
+#[derive(Debug)]
+pub struct IqReblocker {
+    buffer: Vec<IqSample>,
+    sequence: u64,
+}
+
+impl IqReblocker {
+    pub fn new() -> Self {
+        Self {
+            buffer: Vec::with_capacity(IQ_BLOCK_SIZE * 2),
+            sequence: 0,
+        }
+    }
+
+    pub fn push(
+        &mut self,
+        input: &[IqSample],
+        timestamp: u64,
+        center_frequency_hz: u64,
+        sample_rate: u32,
+    ) -> Vec<IqBlock> {
+        self.buffer.extend_from_slice(input);
+
+        let mut output = Vec::new();
+
+        while self.buffer.len() >= IQ_BLOCK_SIZE {
+            let samples: Vec<IqSample> = self.buffer.drain(..IQ_BLOCK_SIZE).collect();
+
+            output.push(IqBlock::new(
+                self.sequence,
+                timestamp,
+                center_frequency_hz,
+                sample_rate,
+                samples,
+            ));
+
+            self.sequence += 1;
+        }
+
+        output
+    }
+
+    pub fn pending_samples(&self) -> usize {
+        self.buffer.len()
+    }
+}

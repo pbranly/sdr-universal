@@ -1,0 +1,1580 @@
+```rust
+use anyhow::{anyhow, Result};
+use std::os::raw::{c_int, c_void};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
+use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::core::{IqBlock, IqReblocker, IqSample};
+
+const MAX_DEVICES: usize = 16;
+const MAX_SER_NO_LEN: usize = 64;
+
+static IQ_CALLBACK_RECEIVED: AtomicBool = AtomicBool::new(false);
+
+/* ============================================================
+ * SDRplay structures
+ * ============================================================ */
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayDevice {
+    ser_no: [u8; MAX_SER_NO_LEN],
+    hw_ver: u8,
+    tuner: c_int,
+    rsp_duo_mode: c_int,
+    valid: u8,
+    rsp_duo_sample_freq: f64,
+    dev: *mut c_void,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayFsFreq {
+    fs_hz: f64,
+    sync_update: u8,
+    re_cal: u8,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplaySyncUpdate {
+    sample_num: u32,
+    period: u32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayResetFlags {
+    reset_gain_update: u8,
+    reset_rf_update: u8,
+    reset_fs_update: u8,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayGainValues {
+    curr: f32,
+    max: f32,
+    min: f32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayGain {
+    gr_db: c_int,
+    lna_state: u8,
+    sync_update: u8,
+    min_gr: c_int,
+    gain_vals: SdrplayGainValues,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayRfFreq {
+    rf_hz: f64,
+    sync_update: u8,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayDcOffsetTuner {
+    dc_cal: u8,
+    speed_up: u8,
+    track_time: c_int,
+    refresh_rate_time: c_int,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayTunerParams {
+    bw_type: c_int,
+    if_type: c_int,
+    lo_mode: c_int,
+    gain: SdrplayGain,
+    rf_freq: SdrplayRfFreq,
+    dc_offset_tuner: SdrplayDcOffsetTuner,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayDcOffset {
+    dc_enable: u8,
+    iq_enable: u8,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayDecimation {
+    enable: u8,
+    decimation_factor: u8,
+    wide_band_signal: u8,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayAgc {
+    enable: c_int,
+    set_point_dbfs: c_int,
+    attack_ms: u16,
+    decay_ms: u16,
+    decay_delay_ms: u16,
+    decay_threshold_db: u16,
+    sync_update: c_int,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayControlParams {
+    dc_offset: SdrplayDcOffset,
+    decimation: SdrplayDecimation,
+    agc: SdrplayAgc,
+    adsb_mode: c_int,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayRsp1aParams {
+    rf_notch_enable: u8,
+    rf_dab_notch_enable: u8,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayRsp1aTunerParams {
+    bias_t_enable: u8,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayRsp2Params {
+    ext_ref_output_en: u8,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayRsp2TunerParams {
+    bias_t_enable: u8,
+    am_port_sel: c_int,
+    antenna_sel: c_int,
+    rf_notch_enable: u8,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayRspDuoParams {
+    ext_ref_output_en: c_int,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayRspDuoResetSlaveFlags {
+    reset_gain_update: u8,
+    reset_rf_update: u8,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayRspDuoTunerParams {
+    bias_t_enable: u8,
+    tuner1_am_port_sel: c_int,
+    tuner1_am_notch_enable: u8,
+    rf_notch_enable: u8,
+    rf_dab_notch_enable: u8,
+    reset_slave_flags: SdrplayRspDuoResetSlaveFlags,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayRspDxParams {
+    hdr_enable: u8,
+    bias_t_enable: u8,
+    antenna_sel: c_int,
+    rf_notch_enable: u8,
+    rf_dab_notch_enable: u8,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayRspDxTunerParams {
+    hdr_bw: c_int,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayDevParams {
+    ppm: f64,
+    fs_freq: SdrplayFsFreq,
+    sync_update: SdrplaySyncUpdate,
+    reset_flags: SdrplayResetFlags,
+    mode: c_int,
+    samples_per_pkt: u32,
+    rsp1a_params: SdrplayRsp1aParams,
+    rsp2_params: SdrplayRsp2Params,
+    rsp_duo_params: SdrplayRspDuoParams,
+    rsp_dx_params: SdrplayRspDxParams,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayRxChannelParams {
+    tuner_params: SdrplayTunerParams,
+    ctrl_params: SdrplayControlParams,
+    rsp1a_tuner_params: SdrplayRsp1aTunerParams,
+    rsp2_tuner_params: SdrplayRsp2TunerParams,
+    rsp_duo_tuner_params: SdrplayRspDuoTunerParams,
+    rsp_dx_tuner_params: SdrplayRspDxTunerParams,
+}
+
+#[repr(C)]
+struct SdrplayDeviceParams {
+    dev_params: *mut SdrplayDevParams,
+    rx_channel_a: *mut SdrplayRxChannelParams,
+    rx_channel_b: *mut SdrplayRxChannelParams,
+}
+
+/* ============================================================
+ * Callback structures
+ * ============================================================ */
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayStreamCbParams {
+    first_sample_num: u32,
+    gr_changed: c_int,
+    rf_changed: c_int,
+    fs_changed: c_int,
+    num_samples: u32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayGainCbParam {
+    gr_db: u32,
+    lna_gr_db: u32,
+    curr_gain: f64,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayPowerOverloadCbParam {
+    power_overload_change_type: c_int,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct SdrplayRspDuoModeCbParam {
+    mode_change_type: c_int,
+}
+
+#[repr(C)]
+union SdrplayEventParams {
+    gain_params: SdrplayGainCbParam,
+    power_overload_params: SdrplayPowerOverloadCbParam,
+    rsp_duo_mode_params: SdrplayRspDuoModeCbParam,
+}
+
+type SdrplayStreamCallback = unsafe extern "C" fn(
+    xi: *mut i16,
+    xq: *mut i16,
+    params: *mut SdrplayStreamCbParams,
+    num_samples: u32,
+    reset: u32,
+    cb_context: *mut c_void,
+);
+
+type SdrplayEventCallback = unsafe extern "C" fn(
+    event_id: c_int,
+    tuner: c_int,
+    params: *mut SdrplayEventParams,
+    cb_context: *mut c_void,
+);
+
+#[repr(C)]
+struct SdrplayCallbackFns {
+    stream_a_cb_fn: Option<SdrplayStreamCallback>,
+    stream_b_cb_fn: Option<SdrplayStreamCallback>,
+    event_cb_fn: Option<SdrplayEventCallback>,
+}
+
+/* ============================================================
+ * Callback context
+ * ============================================================ */
+
+struct CallbackContext {
+    iq_tx: SyncSender<IqBlock>,
+
+    /*
+     * Le callback SDRplay fournit généralement des blocs
+     * de 1008 échantillons.
+     *
+     * Le Core travaille avec des IqBlock de 4096 échantillons.
+     * Le reblocker conserve donc les échantillons entre deux
+     * callbacks jusqu'à pouvoir produire un bloc complet.
+     */
+    reblocker: Mutex<IqReblocker>,
+
+    center_frequency_hz: AtomicU64,
+    sample_rate: AtomicU64,
+
+    /*
+     * Nombre de IqBlock de 4096 échantillons qui n'ont pas pu
+     * être envoyés au Core parce que la file était pleine.
+     */
+    dropped_blocks: AtomicU64,
+}
+
+/* ============================================================
+ * Layout checks
+ * ============================================================ */
+
+const _: () = {
+    assert!(std::mem::size_of::<SdrplayDevice>() == 96);
+
+    assert!(std::mem::size_of::<SdrplayDevParams>() == 64);
+    assert!(std::mem::size_of::<SdrplayRxChannelParams>() == 144);
+    assert!(std::mem::size_of::<SdrplayDeviceParams>() == 24);
+
+    assert!(std::mem::size_of::<SdrplayTunerParams>() == 72);
+    assert!(std::mem::size_of::<SdrplayControlParams>() == 32);
+
+    assert!(std::mem::size_of::<SdrplayRsp1aParams>() == 2);
+    assert!(std::mem::size_of::<SdrplayRsp1aTunerParams>() == 1);
+
+    assert!(std::mem::size_of::<SdrplayRsp2Params>() == 1);
+    assert!(std::mem::size_of::<SdrplayRsp2TunerParams>() == 16);
+
+    assert!(std::mem::size_of::<SdrplayRspDuoParams>() == 4);
+    assert!(std::mem::size_of::<SdrplayRspDuoTunerParams>() == 16);
+
+    assert!(std::mem::size_of::<SdrplayRspDxParams>() == 12);
+    assert!(std::mem::size_of::<SdrplayRspDxTunerParams>() == 4);
+
+    assert!(std::mem::size_of::<SdrplayStreamCbParams>() == 20);
+    assert!(std::mem::size_of::<SdrplayGainCbParam>() == 16);
+    assert!(std::mem::size_of::<SdrplayEventParams>() == 16);
+    assert!(std::mem::size_of::<SdrplayCallbackFns>() == 24);
+};
+
+/* ============================================================
+ * SDRplay API
+ * ============================================================ */
+
+#[link(name = "sdrplay_api")]
+unsafe extern "C" {
+    fn sdrplay_api_Open() -> c_int;
+    fn sdrplay_api_Close() -> c_int;
+    fn sdrplay_api_ApiVersion(api_ver: *mut f32) -> c_int;
+    fn sdrplay_api_LockDeviceApi() -> c_int;
+    fn sdrplay_api_UnlockDeviceApi() -> c_int;
+    fn sdrplay_api_GetDevices(
+        devices: *mut SdrplayDevice,
+        num_devs: *mut u32,
+        max_devs: u32,
+    ) -> c_int;
+    fn sdrplay_api_DisableHeartbeat() -> c_int;
+    fn sdrplay_api_SelectDevice(device: *mut SdrplayDevice) -> c_int;
+    fn sdrplay_api_ReleaseDevice(device: *mut c_void) -> c_int;
+    fn sdrplay_api_GetDeviceParams(
+        dev: *mut c_void,
+        device_params: *mut *mut SdrplayDeviceParams,
+    ) -> c_int;
+    fn sdrplay_api_Init(
+        dev: *mut c_void,
+        callback_fns: *mut SdrplayCallbackFns,
+        cb_context: *mut c_void,
+    ) -> c_int;
+    fn sdrplay_api_Uninit(dev: *mut c_void) -> c_int;
+    fn sdrplay_api_Update(
+        dev: *mut c_void,
+        tuner: c_int,
+        reason_for_update: c_int,
+        ext1_reason_for_update: c_int,
+    ) -> c_int;
+}
+
+/* ============================================================
+ * Helpers
+ * ============================================================ */
+
+fn timestamp_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_micros() as u64)
+        .unwrap_or(0)
+}
+
+/* ============================================================
+ * IQ callback
+ * ============================================================ */
+
+unsafe extern "C" fn stream_a_callback(
+    xi: *mut i16,
+    xq: *mut i16,
+    params: *mut SdrplayStreamCbParams,
+    num_samples: u32,
+    reset: u32,
+    cb_context: *mut c_void,
+) {
+    if cb_context.is_null() || xi.is_null() || xq.is_null() {
+        return;
+    }
+
+    let context = &*(cb_context as *const CallbackContext);
+
+    if num_samples == 0 {
+        return;
+    }
+
+    let center_frequency_hz =
+        context.center_frequency_hz.load(Ordering::Relaxed);
+
+    let sample_rate =
+        context.sample_rate.load(Ordering::Relaxed) as u32;
+
+    /*
+     * Conversion des échantillons bruts SDRplay
+     * vers notre représentation IqSample.
+     */
+    let mut samples =
+        Vec::with_capacity(num_samples as usize);
+
+    for index in 0..num_samples as usize {
+        let i = *xi.add(index) as f32 / 32768.0;
+        let q = *xq.add(index) as f32 / 32768.0;
+
+        samples.push(IqSample { i, q });
+    }
+
+    /*
+     * Reblocage :
+     *
+     * SDRplay -> ~1008 échantillons
+     * Core    -> 4096 échantillons
+     *
+     * Le Mutex protège l'état interne du reblocker.
+     */
+    let blocks = {
+        let mut reblocker =
+            match context.reblocker.lock() {
+                Ok(reblocker) => reblocker,
+
+                Err(_) => {
+                    eprintln!(
+                        "Erreur : mutex IqReblocker empoisonné"
+                    );
+                    return;
+                }
+            };
+
+        reblocker.push(
+            &samples,
+            timestamp_now(),
+            center_frequency_hz,
+            sample_rate,
+        )
+    };
+
+    /*
+     * Envoi des blocs 4096 échantillons vers le Core.
+     *
+     * try_send() est volontairement non bloquant :
+     * le callback SDRplay ne doit jamais attendre le Core.
+     */
+    for block in blocks {
+        match context.iq_tx.try_send(block) {
+            Ok(()) => {}
+
+            Err(TrySendError::Full(_)) => {
+                context
+                    .dropped_blocks
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+
+            Err(TrySendError::Disconnected(_)) => {
+                // Le Core n'écoute plus le flux IQ.
+            }
+        }
+    }
+
+    /*
+     * Diagnostic du premier callback SDRplay.
+     */
+    if !IQ_CALLBACK_RECEIVED.swap(true, Ordering::Relaxed) {
+        println!();
+        println!("=================================");
+        println!(" Flux IQ -> Core actif !");
+        println!("=================================");
+        println!("  numSamples      : {}", num_samples);
+        println!("  reset           : {}", reset);
+
+        if !params.is_null() {
+            println!(
+                "  firstSampleNum  : {}",
+                (*params).first_sample_num
+            );
+
+            println!(
+                "  grChanged       : {}",
+                (*params).gr_changed
+            );
+
+            println!(
+                "  rfChanged       : {}",
+                (*params).rf_changed
+            );
+
+            println!(
+                "  fsChanged       : {}",
+                (*params).fs_changed
+            );
+        }
+
+        let first_i =
+            *xi as f32 / 32768.0;
+
+        let first_q =
+            *xq as f32 / 32768.0;
+
+        println!(
+            "  premier I       : {:.6}",
+            first_i
+        );
+
+        println!(
+            "  premier Q       : {:.6}",
+            first_q
+        );
+
+        println!(
+            "  taille bloc Core: {}",
+            crate::core::IQ_BLOCK_SIZE
+        );
+
+        println!();
+    }
+}
+
+/* ============================================================
+ * Event callback
+ * ============================================================ */
+
+unsafe extern "C" fn event_callback(
+    event_id: c_int,
+    tuner: c_int,
+    _params: *mut SdrplayEventParams,
+    _cb_context: *mut c_void,
+) {
+    println!(
+        "SDRplay event : eventId={} tuner={}",
+        event_id,
+        tuner
+    );
+}
+
+/* ============================================================
+ * Backend
+ * ============================================================ */
+
+pub struct SdrplayBackend {
+    connected: bool,
+    device_selected: bool,
+    initialized: bool,
+    serial: Option<String>,
+    selected_device: Option<SdrplayDevice>,
+    iq_rx: Option<Receiver<IqBlock>>,
+    callback_context: Option<Box<CallbackContext>>,
+}
+
+impl SdrplayBackend {
+    pub fn new() -> Self {
+        /*
+         * File d'attente bornée.
+         *
+         * 1024 IqBlock de 4096 échantillons représentent
+         * une marge importante entre le callback SDRplay
+         * et le consommateur Core.
+         */
+        let (iq_tx, iq_rx) =
+            sync_channel(1024);
+
+        let callback_context =
+            Box::new(CallbackContext {
+                iq_tx,
+
+                reblocker:
+                    Mutex::new(
+                        IqReblocker::new()
+                    ),
+
+                center_frequency_hz:
+                    AtomicU64::new(
+                        200_000_000
+                    ),
+
+                sample_rate:
+                    AtomicU64::new(
+                        2_000_000
+                    ),
+
+                dropped_blocks:
+                    AtomicU64::new(0),
+            });
+
+        Self {
+            connected: false,
+            device_selected: false,
+            initialized: false,
+            serial: None,
+            selected_device: None,
+            iq_rx: Some(iq_rx),
+            callback_context: Some(
+                callback_context
+            ),
+        }
+    }
+
+    pub fn take_iq_receiver(
+        &mut self,
+    ) -> Option<Receiver<IqBlock>> {
+        self.iq_rx.take()
+    }
+
+    pub fn dropped_iq_blocks(
+        &self,
+    ) -> u64 {
+        self.callback_context
+            .as_ref()
+            .map(|context| {
+                context
+                    .dropped_blocks
+                    .load(Ordering::Relaxed)
+            })
+            .unwrap_or(0)
+    }
+
+    pub fn connect(&mut self) -> Result<()> {
+        unsafe {
+            let result =
+                sdrplay_api_Open();
+
+            if result != 0 {
+                return Err(anyhow!(
+                    "sdrplay_api_Open() a échoué : {}",
+                    result
+                ));
+            }
+
+            self.connected = true;
+
+            let mut api_version =
+                0.0f32;
+
+            let result =
+                sdrplay_api_ApiVersion(
+                    &mut api_version
+                );
+
+            if result != 0 {
+                self.disconnect();
+
+                return Err(anyhow!(
+                    "sdrplay_api_ApiVersion() a échoué : {}",
+                    result
+                ));
+            }
+
+            println!(
+                "SDRplay API : {:.2}",
+                api_version
+            );
+
+            if let Err(err) =
+                self.select_first_device()
+            {
+                self.disconnect();
+
+                return Err(err);
+            }
+        }
+
+        Ok(())
+    }
+
+    unsafe fn select_first_device(
+        &mut self,
+    ) -> Result<()> {
+        let result =
+            sdrplay_api_LockDeviceApi();
+
+        if result != 0 {
+            return Err(anyhow!(
+                "LockDeviceApi() a échoué : {}",
+                result
+            ));
+        }
+
+        let mut devices =
+            [SdrplayDevice {
+                ser_no:
+                    [0; MAX_SER_NO_LEN],
+
+                hw_ver: 0,
+                tuner: 0,
+                rsp_duo_mode: 0,
+                valid: 0,
+                rsp_duo_sample_freq: 0.0,
+                dev: std::ptr::null_mut(),
+            }; MAX_DEVICES];
+
+        let mut num_devices =
+            0u32;
+
+        let result =
+            sdrplay_api_GetDevices(
+                devices.as_mut_ptr(),
+                &mut num_devices,
+                MAX_DEVICES as u32,
+            );
+
+        if result != 0 {
+            sdrplay_api_UnlockDeviceApi();
+
+            return Err(anyhow!(
+                "GetDevices() a échoué : {}",
+                result
+            ));
+        }
+
+        println!(
+            "Nombre de périphériques SDRplay : {}",
+            num_devices
+        );
+
+        if num_devices == 0 {
+            sdrplay_api_UnlockDeviceApi();
+
+            return Err(anyhow!(
+                "Aucun périphérique SDRplay détecté"
+            ));
+        }
+
+        let device =
+            &mut devices[0];
+
+        let serial_end =
+            device
+                .ser_no
+                .iter()
+                .position(|&c| c == 0)
+                .unwrap_or(
+                    MAX_SER_NO_LEN
+                );
+
+        let serial =
+            String::from_utf8_lossy(
+                &device.ser_no
+                    [..serial_end],
+            )
+            .to_string();
+
+        println!(
+            "Périphérique sélectionné :"
+        );
+
+        println!(
+            "  série : {}",
+            serial
+        );
+
+        println!(
+            "  hwVer : {}",
+            device.hw_ver
+        );
+
+        let result =
+            sdrplay_api_DisableHeartbeat();
+
+        if result != 0 {
+            sdrplay_api_UnlockDeviceApi();
+
+            return Err(anyhow!(
+                "DisableHeartbeat() a échoué : {}",
+                result
+            ));
+        }
+
+        let result =
+            sdrplay_api_SelectDevice(
+                device
+            );
+
+        if result != 0 {
+            sdrplay_api_UnlockDeviceApi();
+
+            return Err(anyhow!(
+                "SelectDevice() a échoué : {}",
+                result
+            ));
+        }
+
+        let selected_device =
+            *device;
+
+        self.device_selected = true;
+        self.serial =
+            Some(serial);
+
+        self.selected_device =
+            Some(selected_device);
+
+        let result =
+            sdrplay_api_UnlockDeviceApi();
+
+        if result != 0 {
+            return Err(anyhow!(
+                "UnlockDeviceApi() a échoué : {}",
+                result
+            ));
+        }
+
+        println!(
+            "RSP1B sélectionné."
+        );
+
+        self.get_device_params(
+            selected_device.dev
+        )?;
+
+        self.initialize_device(
+            selected_device.dev
+        )?;
+
+        Ok(())
+    }
+
+    unsafe fn get_device_params(
+        &mut self,
+        dev: *mut c_void,
+    ) -> Result<()> {
+        let mut params:
+            *mut SdrplayDeviceParams =
+                std::ptr::null_mut();
+
+        let result =
+            sdrplay_api_GetDeviceParams(
+                dev,
+                &mut params,
+            );
+
+        if result != 0 {
+            return Err(anyhow!(
+                "GetDeviceParams() a échoué : {}",
+                result
+            ));
+        }
+
+        if params.is_null() {
+            return Err(anyhow!(
+                "GetDeviceParams() a réussi mais retourne un pointeur NULL"
+            ));
+        }
+
+        println!();
+        println!(
+            "Paramètres SDRplay récupérés."
+        );
+
+        println!(
+            "  deviceParams : {:p}",
+            params
+        );
+
+        println!(
+            "  devParams    : {:p}",
+            (*params).dev_params
+        );
+
+        println!(
+            "  rxChannelA   : {:p}",
+            (*params).rx_channel_a
+        );
+
+        println!(
+            "  rxChannelB   : {:p}",
+            (*params).rx_channel_b
+        );
+
+        let mut sample_rate =
+            2_000_000u64;
+
+        let mut frequency =
+            200_000_000u64;
+
+        if !(*params)
+            .dev_params
+            .is_null()
+        {
+            let dev_params =
+                &*(*params).dev_params;
+
+            sample_rate =
+                dev_params
+                    .fs_freq
+                    .fs_hz
+                    .round() as u64;
+
+            println!();
+            println!(
+                "Paramètres Device :"
+            );
+
+            println!(
+                "  sample rate : {:.0} Hz",
+                dev_params
+                    .fs_freq
+                    .fs_hz
+            );
+
+            println!(
+                "  PPM         : {:.3}",
+                dev_params.ppm
+            );
+
+            println!(
+                "  transfert   : {}",
+                dev_params.mode
+            );
+
+            println!(
+                "  samples/pkt : {}",
+                dev_params
+                    .samples_per_pkt
+            );
+
+            println!(
+                "  RF notch    : {}",
+                dev_params
+                    .rsp1a_params
+                    .rf_notch_enable
+            );
+
+            println!(
+                "  DAB notch   : {}",
+                dev_params
+                    .rsp1a_params
+                    .rf_dab_notch_enable
+            );
+        }
+
+        if !(*params)
+            .rx_channel_a
+            .is_null()
+        {
+            let rx =
+                &*(*params)
+                    .rx_channel_a;
+
+            frequency =
+                rx.tuner_params
+                    .rf_freq
+                    .rf_hz
+                    .round() as u64;
+
+            println!();
+            println!(
+                "Paramètres RX A :"
+            );
+
+            println!(
+                "  fréquence   : {:.0} Hz",
+                rx.tuner_params
+                    .rf_freq
+                    .rf_hz
+            );
+
+            println!(
+                "  bandwidth   : {} kHz",
+                rx.tuner_params
+                    .bw_type
+            );
+
+            println!(
+                "  IF          : {} kHz",
+                rx.tuner_params
+                    .if_type
+            );
+
+            println!(
+                "  LO mode     : {}",
+                rx.tuner_params
+                    .lo_mode
+            );
+
+            println!(
+                "  gain        : {} dB",
+                rx.tuner_params
+                    .gain
+                    .gr_db
+            );
+
+            println!(
+                "  LNA state   : {}",
+                rx.tuner_params
+                    .gain
+                    .lna_state
+            );
+
+            println!(
+                "  AGC         : {}",
+                rx.ctrl_params
+                    .agc
+                    .enable
+            );
+
+            println!(
+                "  AGC setpoint: {} dBFS",
+                rx.ctrl_params
+                    .agc
+                    .set_point_dbfs
+            );
+
+            println!(
+                "  DC offset   : {}",
+                rx.ctrl_params
+                    .dc_offset
+                    .dc_enable
+            );
+
+            println!(
+                "  IQ balance  : {}",
+                rx.ctrl_params
+                    .dc_offset
+                    .iq_enable
+            );
+
+            println!(
+                "  bias-T      : {}",
+                rx.rsp1a_tuner_params
+                    .bias_t_enable
+            );
+        }
+
+        if let Some(context) =
+            self.callback_context.as_ref()
+        {
+            context.sample_rate.store(
+                sample_rate,
+                Ordering::Relaxed,
+            );
+
+            context
+                .center_frequency_hz
+                .store(
+                    frequency,
+                    Ordering::Relaxed,
+                );
+        }
+
+        Ok(())
+    }
+
+    unsafe fn initialize_device(
+        &mut self,
+        dev: *mut c_void,
+    ) -> Result<()> {
+        IQ_CALLBACK_RECEIVED.store(
+            false,
+            Ordering::Relaxed,
+        );
+
+        let context =
+            self.callback_context
+                .as_mut()
+                .ok_or_else(|| {
+                    anyhow!(
+                        "Contexte callback IQ absent"
+                    )
+                })?;
+
+        let context_ptr =
+            context.as_mut()
+                as *mut CallbackContext
+                as *mut c_void;
+
+        let mut callbacks =
+            SdrplayCallbackFns {
+                stream_a_cb_fn:
+                    Some(
+                        stream_a_callback
+                    ),
+
+                stream_b_cb_fn: None,
+
+                event_cb_fn:
+                    Some(
+                        event_callback
+                    ),
+            };
+
+        println!();
+        println!(
+            "Initialisation du RSP1B..."
+        );
+
+        let result =
+            sdrplay_api_Init(
+                dev,
+                &mut callbacks,
+                context_ptr,
+            );
+
+        if result != 0 {
+            return Err(anyhow!(
+                "sdrplay_api_Init() a échoué : {}",
+                result
+            ));
+        }
+
+        self.initialized = true;
+
+        println!(
+            "RSP1B initialisé."
+        );
+
+        Ok(())
+    }
+
+    pub fn set_frequency(
+        &mut self,
+        frequency_hz: u64,
+    ) -> Result<()> {
+        if !self.connected {
+            return Err(anyhow!(
+                "SDRplay non connecté"
+            ));
+        }
+
+        if !self.device_selected {
+            return Err(anyhow!(
+                "Aucun périphérique SDRplay sélectionné"
+            ));
+        }
+
+        if !self.initialized {
+            return Err(anyhow!(
+                "RSP1B non initialisé"
+            ));
+        }
+
+        let device =
+            self.selected_device
+                .ok_or_else(|| {
+                    anyhow!(
+                        "Périphérique SDRplay absent"
+                    )
+                })?;
+
+        unsafe {
+            let mut params:
+                *mut SdrplayDeviceParams =
+                std::ptr::null_mut();
+
+            let result =
+                sdrplay_api_GetDeviceParams(
+                    device.dev,
+                    &mut params,
+                );
+
+            if result != 0 {
+                return Err(anyhow!(
+                    "GetDeviceParams() a échoué : {}",
+                    result
+                ));
+            }
+
+            if params.is_null() {
+                return Err(anyhow!(
+                    "GetDeviceParams() retourne NULL"
+                ));
+            }
+
+            if (*params)
+                .rx_channel_a
+                .is_null()
+            {
+                return Err(anyhow!(
+                    "rxChannelA est NULL"
+                ));
+            }
+
+            let rx =
+                &mut *(*params)
+                    .rx_channel_a;
+
+            rx.tuner_params
+                .rf_freq
+                .rf_hz =
+                frequency_hz as f64;
+
+            const UPDATE_TUNER_FRF:
+                c_int =
+                0x00020000;
+
+            const TUNER_A: c_int = 1;
+            const EXT1_NONE: c_int = 0;
+
+            let result =
+                sdrplay_api_Update(
+                    device.dev,
+                    TUNER_A,
+                    UPDATE_TUNER_FRF,
+                    EXT1_NONE,
+                );
+
+            if result != 0 {
+                return Err(anyhow!(
+                    "sdrplay_api_Update(FRF) a échoué : {}",
+                    result
+                ));
+            }
+
+            if let Some(context) =
+                self.callback_context.as_ref()
+            {
+                context
+                    .center_frequency_hz
+                    .store(
+                        frequency_hz,
+                        Ordering::Relaxed,
+                    );
+            }
+
+            println!(
+                "Fréquence RSP1B réglée à {} Hz",
+                frequency_hz
+            );
+        }
+
+        Ok(())
+    }
+
+    pub fn set_sample_rate(
+        &mut self,
+        sample_rate_hz: u32,
+    ) -> Result<()> {
+        if !self.connected {
+            return Err(anyhow!(
+                "SDRplay non connecté"
+            ));
+        }
+
+        if !self.device_selected {
+            return Err(anyhow!(
+                "Aucun périphérique SDRplay sélectionné"
+            ));
+        }
+
+        if !self.initialized {
+            return Err(anyhow!(
+                "RSP1B non initialisé"
+            ));
+        }
+
+        let device =
+            self.selected_device
+                .ok_or_else(|| {
+                    anyhow!(
+                        "Périphérique SDRplay absent"
+                    )
+                })?;
+
+        unsafe {
+            let mut params:
+                *mut SdrplayDeviceParams =
+                std::ptr::null_mut();
+
+            let result =
+                sdrplay_api_GetDeviceParams(
+                    device.dev,
+                    &mut params,
+                );
+
+            if result != 0 {
+                return Err(anyhow!(
+                    "GetDeviceParams() a échoué : {}",
+                    result
+                ));
+            }
+
+            if params.is_null() {
+                return Err(anyhow!(
+                    "GetDeviceParams() retourne NULL"
+                ));
+            }
+
+            if (*params)
+                .dev_params
+                .is_null()
+            {
+                return Err(anyhow!(
+                    "devParams est NULL"
+                ));
+            }
+
+            let dev_params =
+                &mut *(*params)
+                    .dev_params;
+
+            dev_params
+                .fs_freq
+                .fs_hz =
+                sample_rate_hz as f64;
+
+            const UPDATE_DEV_FS:
+                c_int =
+                0x00000001;
+
+            const TUNER_A: c_int = 1;
+            const EXT1_NONE: c_int = 0;
+
+            let result =
+                sdrplay_api_Update(
+                    device.dev,
+                    TUNER_A,
+                    UPDATE_DEV_FS,
+                    EXT1_NONE,
+                );
+
+            if result != 0 {
+                return Err(anyhow!(
+                    "sdrplay_api_Update(FS) a échoué : {}",
+                    result
+                ));
+            }
+
+            if let Some(context) =
+                self.callback_context.as_ref()
+            {
+                context
+                    .sample_rate
+                    .store(
+                        sample_rate_hz as u64,
+                        Ordering::Relaxed,
+                    );
+            }
+
+            println!(
+                "Sample rate RSP1B réglé à {} Hz",
+                sample_rate_hz
+            );
+        }
+
+        Ok(())
+    }
+
+    pub fn set_bandwidth(
+        &mut self,
+        bandwidth_hz: u32,
+    ) -> Result<()> {
+        if !self.connected {
+            return Err(anyhow!(
+                "SDRplay non connecté"
+            ));
+        }
+
+        if !self.device_selected {
+            return Err(anyhow!(
+                "Aucun périphérique SDRplay sélectionné"
+            ));
+        }
+
+        if !self.initialized {
+            return Err(anyhow!(
+                "RSP1B non initialisé"
+            ));
+        }
+
+        let device =
+            self.selected_device
+                .ok_or_else(|| {
+                    anyhow!(
+                        "Périphérique SDRplay absent"
+                    )
+                })?;
+
+        let bw_type: c_int =
+            match bandwidth_hz {
+                200_000 => 200,
+                300_000 => 300,
+                600_000 => 600,
+                1_536_000 => 1536,
+                5_000_000 => 5000,
+                6_000_000 => 6000,
+                7_000_000 => 7000,
+                8_000_000 => 8000,
+
+                _ => {
+                    return Err(anyhow!(
+                        "Bande passante non supportée : {} Hz",
+                        bandwidth_hz
+                    ));
+                }
+            };
+
+        unsafe {
+            let mut params:
+                *mut SdrplayDeviceParams =
+                std::ptr::null_mut();
+
+            let result =
+                sdrplay_api_GetDeviceParams(
+                    device.dev,
+                    &mut params,
+                );
+
+            if result != 0 {
+                return Err(anyhow!(
+                    "GetDeviceParams() a échoué : {}",
+                    result
+                ));
+            }
+
+            if params.is_null() {
+                return Err(anyhow!(
+                    "GetDeviceParams() retourne NULL"
+                ));
+            }
+
+            if (*params)
+                .rx_channel_a
+                .is_null()
+            {
+                return Err(anyhow!(
+                    "rxChannelA est NULL"
+                ));
+            }
+
+            let rx =
+                &mut *(*params)
+                    .rx_channel_a;
+
+            rx.tuner_params
+                .bw_type =
+                bw_type;
+
+            const UPDATE_TUNER_BW_TYPE:
+                c_int =
+                0x00040000;
+
+            const TUNER_A: c_int = 1;
+            const EXT1_NONE: c_int = 0;
+
+            let result =
+                sdrplay_api_Update(
+                    device.dev,
+                    TUNER_A,
+                    UPDATE_TUNER_BW_TYPE,
+                    EXT1_NONE,
+                );
+
+            if result != 0 {
+                return Err(anyhow!(
+                    "sdrplay_api_Update(BW_TYPE) a échoué : {}",
+                    result
+                ));
+            }
+
+            println!(
+                "Bande passante RSP1B réglée à {} Hz",
+                bandwidth_hz
+            );
+        }
+
+        Ok(())
+    }
+
+    pub fn disconnect(
+        &mut self,
+    ) {
+        if !self.connected {
+            return;
+        }
+
+        unsafe {
+            if self.initialized {
+                if let Some(device) =
+                    self.selected_device
+                {
+                    let result =
+                        sdrplay_api_Uninit(
+                            device.dev
+                        );
+
+                    if result != 0 {
+                        eprintln!(
+                            "sdrplay_api_Uninit() a échoué : {}",
+                            result
+                        );
+                    } else {
+                        println!(
+                            "RSP1B désinitialisé."
+                        );
+                    }
+                }
+
+                self.initialized = false;
+            }
+
+            if let Some(device) =
+                self.selected_device.take()
+            {
+                let result =
+                    sdrplay_api_ReleaseDevice(
+                        device.dev
+                    );
+
+                if result != 0 {
+                    eprintln!(
+                        "ReleaseDevice() a échoué : {}",
+                        result
+                    );
+                } else {
+                    println!(
+                        "RSP1B libéré."
+                    );
+                }
+            }
+
+            let result =
+                sdrplay_api_Close();
+
+            if result != 0 {
+                eprintln!(
+                    "sdrplay_api_Close() a échoué : {}",
+                    result
+                );
+            }
+        }
+
+        self.connected = false;
+        self.device_selected = false;
+        self.initialized = false;
+        self.serial = None;
+        self.callback_context = None;
+    }
+
+    pub fn is_connected(
+        &self,
+    ) -> bool {
+        self.connected
+    }
+}
+
+impl Drop for SdrplayBackend {
+    fn drop(&mut self) {
+        self.disconnect();
+    }
+}
+```

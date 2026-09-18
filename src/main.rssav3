@@ -1,0 +1,76 @@
+```rust
+mod backend;
+mod core;
+
+use anyhow::Result;
+
+use backend::sdrplay::SdrplayBackend;
+
+use core::{Capabilities, Command, CommandResult, Receiver, ReceiverState};
+
+fn main() -> Result<()> {
+    println!("=================================");
+    println!(" SDR Universal");
+    println!(" Test Core -> SDRplay");
+    println!("=================================");
+    println!();
+
+    let state = ReceiverState::default();
+    let capabilities = Capabilities::default();
+    let mut receiver = Receiver::new(state, capabilities);
+
+    let mut sdrplay = SdrplayBackend::new();
+
+    println!("Connexion au SDRplay...");
+
+    sdrplay.connect()?;
+
+    println!();
+    println!("SDRplay connecté.");
+    println!();
+
+    let frequency = 145_000_000u64;
+
+    println!("--- SetFrequency({}) ---", frequency);
+
+    match receiver.handle_command(Command::SetFrequency(frequency))? {
+        CommandResult::Event(event) => {
+            println!("Événement Core : {:?}", event);
+        }
+        other => {
+            println!("Résultat Core : {:?}", other);
+        }
+    }
+
+    sdrplay.set_frequency(receiver.state().frequency_hz)?;
+    sdrplay.set_sample_rate(receiver.state().sample_rate)?;
+    sdrplay.set_gain(40.0)?;
+
+    println!();
+    println!("=================================");
+    println!(" État Core");
+    println!("=================================");
+
+    println!("{:#?}", receiver.state());
+
+    println!();
+
+    println!("Le RSP1B doit maintenant être à :");
+    println!("  {} Hz", receiver.state().frequency_hz);
+    println!(
+        "  {} Hz de sample rate",
+        receiver.state().sample_rate
+    );
+    println!("  40.00 dB de gain");
+
+    let _iq_receiver = sdrplay.take_iq_receiver();
+
+    println!();
+    println!("Flux IQ toujours disponible.");
+    println!();
+
+    println!("Test Core -> SDRplay terminé.");
+
+    Ok(())
+}
+```
