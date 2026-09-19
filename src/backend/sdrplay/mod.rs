@@ -496,10 +496,28 @@ unsafe extern "C" fn stream_a_callback(
 unsafe extern "C" fn event_callback(
     event_id: c_int,
     tuner: c_int,
-    _params: *mut SdrplayEventParams,
+    params: *mut SdrplayEventParams,
     _cb_context: *mut c_void,
 ) {
-    println!("SDRplay event : eventId={} tuner={}", event_id, tuner);
+    println!(
+        "SDRplay event : eventId={} tuner={}",
+        event_id,
+        tuner
+    );
+
+    // sdrplay_api_GainChange = 0
+    if event_id == 0 {
+        if !params.is_null() {
+            let gain = (*params).gain_params;
+
+            println!(
+                "  Gain callback : gRdB={} lnaGRdB={} currGain={:.2} dB",
+                gain.gr_db,
+                gain.lna_gr_db,
+                gain.curr_gain
+            );
+        }
+    }
 }
 
 pub struct SdrplayBackend {
@@ -747,7 +765,18 @@ impl SdrplayBackend {
 
             println!("  LO mode     : {}", rx.tuner_params.lo_mode);
 
-            println!("  gain        : {} dB", rx.tuner_params.gain.gr_db);
+            println!("  Gain reduction : {} dB", rx.tuner_params.gain.gr_db);
+
+            println!("  LNA state : {}", rx.tuner_params.gain.lna_state);
+
+            println!("  Min gain reduction : {} dB", rx.tuner_params.gain.min_gr);
+
+            println!(
+                "  Gain values : curr={:.2} max={:.2} min={:.2}",
+                rx.tuner_params.gain.gain_vals.curr,
+                rx.tuner_params.gain.gain_vals.max,
+                rx.tuner_params.gain.gain_vals.min
+            );
 
             println!("  LNA state   : {}", rx.tuner_params.gain.lna_state);
 
@@ -1083,7 +1112,94 @@ impl SdrplayBackend {
 
         Ok(())
     }
+    pub fn set_agc(&mut self, enabled: bool) -> Result<()> {
 
+        if !self.connected {
+            return Err(anyhow!("SDRplay non connecté"));
+        }
+
+        if !self.device_selected {
+            return Err(anyhow!("Aucun périphérique SDRplay sélectionné"));
+        }
+
+        if !self.initialized {
+            return Err(anyhow!("RSP1B non initialisé"));
+        }
+
+        let device = self
+            .selected_device
+            .ok_or_else(|| anyhow!("Périphérique SDRplay absent"))?;
+
+        unsafe {
+            let mut params: *mut SdrplayDeviceParams = std::ptr::null_mut();
+
+            let result =
+                sdrplay_api_GetDeviceParams(device.dev, &mut params);
+
+            if result != 0 {
+                return Err(anyhow!(
+                    "GetDeviceParams() a échoué : {}",
+                    result
+                ));
+            }
+
+            if params.is_null() {
+                return Err(anyhow!(
+                    "GetDeviceParams() retourne NULL"
+                ));
+            }
+
+            if (*params).rx_channel_a.is_null() {
+                return Err(anyhow!(
+                    "rxChannelA est NULL"
+                ));
+            }
+
+            let rx = &mut *(*params).rx_channel_a;
+
+/*
+ * SDRplay AGC :
+ *   0 = AGC_DISABLE
+ *   1 = AGC_100HZ
+ *   2 = AGC_50HZ
+ *   3 = AGC_5HZ
+ *   4 = AGC_CTRL_EN
+ */
+rx.ctrl_params.agc.enable = if enabled { 1 } else { 0 };
+
+
+
+const UPDATE_CTRL_AGC: c_int = 0x01000000;
+
+            const TUNER_A: c_int = 1;
+            const EXT1_NONE: c_int = 0;
+
+            let result = sdrplay_api_Update(
+                device.dev,
+                TUNER_A,
+                UPDATE_CTRL_AGC,
+                EXT1_NONE,
+            );
+
+            if result != 0 {
+                return Err(anyhow!(
+                    "sdrplay_api_Update(AGC) a échoué : {}",
+                    result
+                ));
+            }
+
+            println!(
+                "AGC RSP1B {}",
+                if enabled {
+                    "activé"
+                } else {
+                    "désactivé"
+                }
+            );
+        }
+
+        Ok(())
+    }
     pub fn disconnect(&mut self) {
         if !self.connected {
             return;

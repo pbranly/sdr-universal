@@ -78,19 +78,19 @@ fn main() -> Result<()> {
 
     println!(">>> APRES set_bandwidth()");
 
-    println!(">>> Réglage du gain à {} dB", receiver.state().gain);
+println!(">>> Réglage du gain à {} dB", receiver.state().gain);
 
-    sdrplay.set_gain(receiver.state().gain)?;
+sdrplay.set_gain(receiver.state().gain)?;
 
-    println!(">>> APRES set_gain()");
+println!(">>> Désactivation de l'AGC");
+sdrplay.set_agc(false)?;
 
-    println!();
-    println!("=================================");
-    println!(" État Core");
-    println!("=================================");
+println!();
+println!("=================================");
+println!(" État Core");
+println!("=================================");
 
-    println!("{:#?}", receiver.state());
-
+println!("{:#?}", receiver.state());
     println!();
     println!("Le RSP1B doit maintenant être à :");
     println!("  {} Hz", receiver.state().frequency_hz);
