@@ -4,14 +4,7 @@ mod core;
 use anyhow::Result;
 
 use backend::sdrplay::SdrplayBackend;
-use core::{
-    Capabilities,
-    Command,
-    CommandResult,
-    Receiver,
-    ReceiverMode,
-    ReceiverState,
-};
+use core::{Capabilities, Command, CommandResult, Receiver, ReceiverMode, ReceiverState};
 
 fn main() -> Result<()> {
     println!("=================================");
@@ -31,10 +24,7 @@ fn main() -> Result<()> {
 
     let capabilities = Capabilities::default();
 
-    let mut receiver = Receiver::new(
-        state,
-        capabilities,
-    );
+    let mut receiver = Receiver::new(state, capabilities);
 
     println!("Connexion au SDRplay...");
 
@@ -69,9 +59,7 @@ fn main() -> Result<()> {
     println!();
     println!("--- SetFrequency(145000000) ---");
 
-    match receiver.handle_command(
-        Command::SetFrequency(145_000_000),
-    )? {
+    match receiver.handle_command(Command::SetFrequency(145_000_000))? {
         CommandResult::Event(event) => {
             println!("Événement Core : {:?}", event);
         }
@@ -80,21 +68,21 @@ fn main() -> Result<()> {
         }
     }
 
-    sdrplay.set_frequency(
-        receiver.state().frequency_hz,
-    )?;
+    sdrplay.set_frequency(receiver.state().frequency_hz)?;
 
-    sdrplay.set_sample_rate(
-        receiver.state().sample_rate,
-    )?;
+    sdrplay.set_sample_rate(receiver.state().sample_rate)?;
 
     println!(">>> AVANT set_bandwidth()");
 
-    sdrplay.set_bandwidth(
-        receiver.state().bandwidth_hz,
-    )?;
+    sdrplay.set_bandwidth(receiver.state().bandwidth_hz)?;
 
     println!(">>> APRES set_bandwidth()");
+
+    println!(">>> Réglage du gain à {} dB", receiver.state().gain);
+
+    sdrplay.set_gain(receiver.state().gain)?;
+
+    println!(">>> APRES set_gain()");
 
     println!();
     println!("=================================");
@@ -105,18 +93,9 @@ fn main() -> Result<()> {
 
     println!();
     println!("Le RSP1B doit maintenant être à :");
-    println!(
-        "  {} Hz",
-        receiver.state().frequency_hz
-    );
-    println!(
-        "  {} Hz de sample rate",
-        receiver.state().sample_rate
-    );
-    println!(
-        "  {} Hz de bande passante",
-        receiver.state().bandwidth_hz
-    );
+    println!("  {} Hz", receiver.state().frequency_hz);
+    println!("  {} Hz de sample rate", receiver.state().sample_rate);
+    println!("  {} Hz de bande passante", receiver.state().bandwidth_hz);
 
     println!();
     println!("Flux IQ toujours disponible.");
@@ -129,9 +108,7 @@ fn main() -> Result<()> {
     println!("=================================");
     println!("Réception IQ pendant 5 secondes...");
 
-    std::thread::sleep(
-        std::time::Duration::from_secs(5)
-    );
+    std::thread::sleep(std::time::Duration::from_secs(5));
 
     println!();
     println!("Fin du test IQ.");
