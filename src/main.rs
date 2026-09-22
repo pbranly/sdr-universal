@@ -14,7 +14,7 @@ fn main() -> Result<()> {
     println!();
 
     let state = ReceiverState {
-        frequency_hz: 200_000_000,
+        frequency_hz: 100_000_000,
         sample_rate: 2_000_000,
         bandwidth_hz: 200_000,
         mode: ReceiverMode::Nfm,
@@ -81,6 +81,20 @@ fn main() -> Result<()> {
 println!(">>> Réglage du gain à {} dB", receiver.state().gain);
 
 sdrplay.set_gain(receiver.state().gain)?;
+
+
+    std::thread::sleep(std::time::Duration::from_millis(300));
+
+    for gr_db in (0..=59).rev() {
+        println!(">>> AVANT GR TEST {}", gr_db);
+
+        sdrplay.set_gr_db_test(gr_db)?;
+
+        println!(">>> APRES GR TEST {}", gr_db);
+
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+
 
 println!(">>> Désactivation de l'AGC");
 sdrplay.set_agc(false)?;

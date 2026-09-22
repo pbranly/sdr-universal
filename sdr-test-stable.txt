@@ -1,0 +1,2169 @@
+>>> TEST LNA STATE 0
+>>> AVANT GR TEST 59
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=59 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 59
+>>> AVANT GR TEST 58
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=58 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 58
+>>> AVANT GR TEST 57
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=57 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 57
+>>> AVANT GR TEST 56
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=56 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 56
+>>> AVANT GR TEST 55
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=55 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 55
+>>> AVANT GR TEST 54
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=54 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 54
+>>> AVANT GR TEST 53
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=53 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 53
+>>> AVANT GR TEST 52
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=52 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 52
+>>> AVANT GR TEST 51
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=51 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 51
+>>> AVANT GR TEST 50
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=50 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 50
+>>> AVANT GR TEST 49
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=49 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 49
+>>> AVANT GR TEST 48
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=48 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 48
+>>> AVANT GR TEST 47
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=47 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 47
+>>> AVANT GR TEST 46
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=46 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 46
+>>> AVANT GR TEST 45
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=45 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 45
+>>> AVANT GR TEST 44
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=44 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 44
+>>> AVANT GR TEST 43
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=43 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 43
+>>> AVANT GR TEST 42
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=42 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 42
+>>> AVANT GR TEST 41
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=41 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 41
+>>> AVANT GR TEST 40
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=40 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 40
+>>> AVANT GR TEST 39
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=39 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 39
+>>> AVANT GR TEST 38
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=38 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 38
+>>> AVANT GR TEST 37
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=37 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 37
+>>> AVANT GR TEST 36
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=36 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 36
+>>> AVANT GR TEST 35
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=35 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 35
+>>> AVANT GR TEST 34
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=34 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 34
+>>> AVANT GR TEST 33
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=33 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 33
+>>> AVANT GR TEST 32
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=32 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 32
+>>> AVANT GR TEST 31
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=31 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 31
+>>> AVANT GR TEST 30
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=30 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 30
+>>> AVANT GR TEST 29
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=29 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 29
+>>> AVANT GR TEST 28
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=28 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 28
+>>> AVANT GR TEST 27
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=27 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 27
+>>> AVANT GR TEST 26
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=26 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 26
+>>> AVANT GR TEST 25
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=25 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 25
+>>> AVANT GR TEST 24
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=24 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 24
+>>> AVANT GR TEST 23
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=23 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 23
+>>> AVANT GR TEST 22
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=22 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 22
+>>> AVANT GR TEST 21
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=21 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 21
+>>> AVANT GR TEST 20
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=20 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 20
+>>> AVANT GR TEST 19
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=19 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 19
+>>> AVANT GR TEST 18
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=18 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 18
+>>> AVANT GR TEST 17
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=17 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 17
+>>> AVANT GR TEST 16
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=16 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 16
+>>> AVANT GR TEST 15
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=15 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 15
+>>> AVANT GR TEST 14
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=14 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 14
+>>> AVANT GR TEST 13
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=13 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 13
+>>> AVANT GR TEST 12
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=12 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 12
+>>> AVANT GR TEST 11
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=11 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 11
+>>> AVANT GR TEST 10
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=10 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 10
+>>> AVANT GR TEST 9
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=9 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 9
+>>> AVANT GR TEST 8
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=8 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 8
+>>> AVANT GR TEST 7
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=7 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 7
+>>> AVANT GR TEST 6
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=6 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 6
+>>> AVANT GR TEST 5
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=5 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 5
+>>> AVANT GR TEST 4
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=4 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 4
+>>> AVANT GR TEST 3
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=3 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 3
+>>> AVANT GR TEST 2
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=2 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 2
+>>> AVANT GR TEST 1
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=1 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 1
+>>> AVANT GR TEST 0
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=0 réel_gRdB=59 LNA=0 curr=66.00 max=105.00 min=-1.60
+>>> APRES GR TEST 0
+>>> TEST LNA STATE 1
+>>> AVANT GR TEST 59
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=59 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 59
+>>> AVANT GR TEST 58
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=58 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 58
+>>> AVANT GR TEST 57
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=57 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 57
+>>> AVANT GR TEST 56
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=56 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 56
+>>> AVANT GR TEST 55
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=55 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 55
+>>> AVANT GR TEST 54
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=54 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 54
+>>> AVANT GR TEST 53
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=53 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 53
+>>> AVANT GR TEST 52
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=52 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 52
+>>> AVANT GR TEST 51
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=51 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 51
+>>> AVANT GR TEST 50
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=50 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 50
+>>> AVANT GR TEST 49
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=49 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 49
+>>> AVANT GR TEST 48
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=48 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 48
+>>> AVANT GR TEST 47
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=47 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 47
+>>> AVANT GR TEST 46
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=46 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 46
+>>> AVANT GR TEST 45
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=45 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 45
+>>> AVANT GR TEST 44
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=44 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 44
+>>> AVANT GR TEST 43
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=43 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 43
+>>> AVANT GR TEST 42
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=42 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 42
+>>> AVANT GR TEST 41
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=41 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 41
+>>> AVANT GR TEST 40
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=40 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 40
+>>> AVANT GR TEST 39
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=39 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 39
+>>> AVANT GR TEST 38
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=38 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 38
+>>> AVANT GR TEST 37
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=37 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 37
+>>> AVANT GR TEST 36
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=36 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 36
+>>> AVANT GR TEST 35
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=35 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 35
+>>> AVANT GR TEST 34
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=34 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 34
+>>> AVANT GR TEST 33
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=33 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 33
+>>> AVANT GR TEST 32
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=32 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 32
+>>> AVANT GR TEST 31
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=31 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 31
+>>> AVANT GR TEST 30
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=30 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 30
+>>> AVANT GR TEST 29
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=29 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 29
+>>> AVANT GR TEST 28
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=28 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 28
+>>> AVANT GR TEST 27
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=27 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 27
+>>> AVANT GR TEST 26
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=26 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 26
+>>> AVANT GR TEST 25
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=25 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 25
+>>> AVANT GR TEST 24
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=24 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 24
+>>> AVANT GR TEST 23
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=23 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 23
+>>> AVANT GR TEST 22
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=22 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 22
+>>> AVANT GR TEST 21
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=21 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 21
+>>> AVANT GR TEST 20
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=20 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 20
+>>> AVANT GR TEST 19
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=19 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 19
+>>> AVANT GR TEST 18
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=18 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 18
+>>> AVANT GR TEST 17
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=17 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 17
+>>> AVANT GR TEST 16
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=16 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 16
+>>> AVANT GR TEST 15
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=15 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 15
+>>> AVANT GR TEST 14
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=14 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 14
+>>> AVANT GR TEST 13
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=13 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 13
+>>> AVANT GR TEST 12
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=12 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 12
+>>> AVANT GR TEST 11
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=11 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 11
+>>> AVANT GR TEST 10
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=10 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 10
+>>> AVANT GR TEST 9
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=9 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 9
+>>> AVANT GR TEST 8
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=8 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 8
+>>> AVANT GR TEST 7
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=7 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 7
+>>> AVANT GR TEST 6
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=6 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 6
+>>> AVANT GR TEST 5
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=5 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 5
+>>> AVANT GR TEST 4
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=4 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 4
+>>> AVANT GR TEST 3
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=3 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 3
+>>> AVANT GR TEST 2
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=2 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 2
+>>> AVANT GR TEST 1
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=1 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 1
+>>> AVANT GR TEST 0
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=0 réel_gRdB=59 LNA=1 curr=59.80 max=105.00 min=-1.60
+>>> APRES GR TEST 0
+>>> TEST LNA STATE 2
+>>> AVANT GR TEST 59
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=59 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 59
+>>> AVANT GR TEST 58
+STABLE : gRdB=58 après environ 100 ms
+GR TEST : demandé=58 réel_gRdB=58 LNA=2 curr=54.20 max=105.00 min=-1.60
+>>> APRES GR TEST 58
+>>> AVANT GR TEST 57
+STABLE : gRdB=57 après environ 100 ms
+GR TEST : demandé=57 réel_gRdB=57 LNA=2 curr=55.20 max=105.00 min=-1.60
+>>> APRES GR TEST 57
+>>> AVANT GR TEST 56
+STABLE : gRdB=56 après environ 100 ms
+GR TEST : demandé=56 réel_gRdB=56 LNA=2 curr=56.20 max=105.00 min=-1.60
+>>> APRES GR TEST 56
+>>> AVANT GR TEST 55
+STABLE : gRdB=56 après environ 100 ms
+GR TEST : demandé=55 réel_gRdB=56 LNA=2 curr=56.20 max=105.00 min=-1.60
+>>> APRES GR TEST 55
+>>> AVANT GR TEST 54
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=54 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 54
+>>> AVANT GR TEST 53
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=53 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 53
+>>> AVANT GR TEST 52
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=52 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 52
+>>> AVANT GR TEST 51
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=51 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 51
+>>> AVANT GR TEST 50
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=50 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 50
+>>> AVANT GR TEST 49
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=49 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 49
+>>> AVANT GR TEST 48
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=48 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 48
+>>> AVANT GR TEST 47
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=47 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 47
+>>> AVANT GR TEST 46
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=46 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 46
+>>> AVANT GR TEST 45
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=45 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 45
+>>> AVANT GR TEST 44
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=44 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 44
+>>> AVANT GR TEST 43
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=43 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 43
+>>> AVANT GR TEST 42
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=42 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 42
+>>> AVANT GR TEST 41
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=41 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 41
+>>> AVANT GR TEST 40
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=40 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 40
+>>> AVANT GR TEST 39
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=39 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 39
+>>> AVANT GR TEST 38
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=38 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 38
+>>> AVANT GR TEST 37
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=37 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 37
+>>> AVANT GR TEST 36
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=36 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 36
+>>> AVANT GR TEST 35
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=35 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 35
+>>> AVANT GR TEST 34
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=34 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 34
+>>> AVANT GR TEST 33
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=33 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 33
+>>> AVANT GR TEST 32
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=32 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 32
+>>> AVANT GR TEST 31
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=31 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 31
+>>> AVANT GR TEST 30
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=30 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 30
+>>> AVANT GR TEST 29
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=29 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 29
+>>> AVANT GR TEST 28
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=28 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 28
+>>> AVANT GR TEST 27
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=27 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 27
+>>> AVANT GR TEST 26
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=26 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 26
+>>> AVANT GR TEST 25
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=25 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 25
+>>> AVANT GR TEST 24
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=24 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 24
+>>> AVANT GR TEST 23
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=23 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 23
+>>> AVANT GR TEST 22
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=22 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 22
+>>> AVANT GR TEST 21
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=21 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 21
+>>> AVANT GR TEST 20
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=20 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 20
+>>> AVANT GR TEST 19
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=19 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 19
+>>> AVANT GR TEST 18
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=18 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 18
+>>> AVANT GR TEST 17
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=17 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 17
+>>> AVANT GR TEST 16
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=16 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 16
+>>> AVANT GR TEST 15
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=15 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 15
+>>> AVANT GR TEST 14
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=14 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 14
+>>> AVANT GR TEST 13
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=13 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 13
+>>> AVANT GR TEST 12
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=12 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 12
+>>> AVANT GR TEST 11
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=11 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 11
+>>> AVANT GR TEST 10
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=10 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 10
+>>> AVANT GR TEST 9
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=9 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 9
+>>> AVANT GR TEST 8
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=8 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 8
+>>> AVANT GR TEST 7
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=7 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 7
+>>> AVANT GR TEST 6
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=6 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 6
+>>> AVANT GR TEST 5
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=5 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 5
+>>> AVANT GR TEST 4
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=4 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 4
+>>> AVANT GR TEST 3
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=3 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 3
+>>> AVANT GR TEST 2
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=2 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 2
+>>> AVANT GR TEST 1
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=1 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 1
+>>> AVANT GR TEST 0
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=0 réel_gRdB=59 LNA=2 curr=53.20 max=105.00 min=-1.60
+>>> APRES GR TEST 0
+>>> TEST LNA STATE 3
+>>> AVANT GR TEST 59
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=59 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 59
+>>> AVANT GR TEST 58
+STABLE : gRdB=58 après environ 100 ms
+GR TEST : demandé=58 réel_gRdB=58 LNA=3 curr=48.55 max=105.00 min=-1.60
+>>> APRES GR TEST 58
+>>> AVANT GR TEST 57
+STABLE : gRdB=57 après environ 100 ms
+GR TEST : demandé=57 réel_gRdB=57 LNA=3 curr=49.55 max=105.00 min=-1.60
+>>> APRES GR TEST 57
+>>> AVANT GR TEST 56
+STABLE : gRdB=56 après environ 100 ms
+GR TEST : demandé=56 réel_gRdB=56 LNA=3 curr=50.55 max=105.00 min=-1.60
+>>> APRES GR TEST 56
+>>> AVANT GR TEST 55
+STABLE : gRdB=55 après environ 100 ms
+GR TEST : demandé=55 réel_gRdB=55 LNA=3 curr=51.55 max=105.00 min=-1.60
+>>> APRES GR TEST 55
+>>> AVANT GR TEST 54
+STABLE : gRdB=54 après environ 100 ms
+GR TEST : demandé=54 réel_gRdB=54 LNA=3 curr=52.55 max=105.00 min=-1.60
+>>> APRES GR TEST 54
+>>> AVANT GR TEST 53
+STABLE : gRdB=53 après environ 100 ms
+GR TEST : demandé=53 réel_gRdB=53 LNA=3 curr=53.55 max=105.00 min=-1.60
+>>> APRES GR TEST 53
+>>> AVANT GR TEST 52
+STABLE : gRdB=52 après environ 100 ms
+GR TEST : demandé=52 réel_gRdB=52 LNA=3 curr=54.55 max=105.00 min=-1.60
+>>> APRES GR TEST 52
+>>> AVANT GR TEST 51
+STABLE : gRdB=51 après environ 100 ms
+GR TEST : demandé=51 réel_gRdB=51 LNA=3 curr=55.55 max=105.00 min=-1.60
+>>> APRES GR TEST 51
+>>> AVANT GR TEST 50
+STABLE : gRdB=51 après environ 100 ms
+GR TEST : demandé=50 réel_gRdB=51 LNA=3 curr=55.55 max=105.00 min=-1.60
+>>> APRES GR TEST 50
+>>> AVANT GR TEST 49
+STABLE : gRdB=50 après environ 100 ms
+GR TEST : demandé=49 réel_gRdB=50 LNA=3 curr=56.55 max=105.00 min=-1.60
+>>> APRES GR TEST 49
+>>> AVANT GR TEST 48
+STABLE : gRdB=49 après environ 100 ms
+GR TEST : demandé=48 réel_gRdB=49 LNA=3 curr=57.55 max=105.00 min=-1.60
+>>> APRES GR TEST 48
+>>> AVANT GR TEST 47
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=47 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 47
+>>> AVANT GR TEST 46
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=46 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 46
+>>> AVANT GR TEST 45
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=45 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 45
+>>> AVANT GR TEST 44
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=44 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 44
+>>> AVANT GR TEST 43
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=43 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 43
+>>> AVANT GR TEST 42
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=42 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 42
+>>> AVANT GR TEST 41
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=41 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 41
+>>> AVANT GR TEST 40
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=40 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 40
+>>> AVANT GR TEST 39
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=39 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 39
+>>> AVANT GR TEST 38
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=38 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 38
+>>> AVANT GR TEST 37
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=37 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 37
+>>> AVANT GR TEST 36
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=36 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 36
+>>> AVANT GR TEST 35
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=35 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 35
+>>> AVANT GR TEST 34
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=34 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 34
+>>> AVANT GR TEST 33
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=33 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 33
+>>> AVANT GR TEST 32
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=32 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 32
+>>> AVANT GR TEST 31
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=31 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 31
+>>> AVANT GR TEST 30
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=30 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 30
+>>> AVANT GR TEST 29
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=29 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 29
+>>> AVANT GR TEST 28
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=28 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 28
+>>> AVANT GR TEST 27
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=27 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 27
+>>> AVANT GR TEST 26
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=26 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 26
+>>> AVANT GR TEST 25
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=25 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 25
+>>> AVANT GR TEST 24
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=24 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 24
+>>> AVANT GR TEST 23
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=23 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 23
+>>> AVANT GR TEST 22
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=22 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 22
+>>> AVANT GR TEST 21
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=21 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 21
+>>> AVANT GR TEST 20
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=20 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 20
+>>> AVANT GR TEST 19
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=19 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 19
+>>> AVANT GR TEST 18
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=18 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 18
+>>> AVANT GR TEST 17
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=17 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 17
+>>> AVANT GR TEST 16
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=16 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 16
+>>> AVANT GR TEST 15
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=15 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 15
+>>> AVANT GR TEST 14
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=14 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 14
+>>> AVANT GR TEST 13
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=13 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 13
+>>> AVANT GR TEST 12
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=12 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 12
+>>> AVANT GR TEST 11
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=11 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 11
+>>> AVANT GR TEST 10
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=10 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 10
+>>> AVANT GR TEST 9
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=9 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 9
+>>> AVANT GR TEST 8
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=8 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 8
+>>> AVANT GR TEST 7
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=7 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 7
+>>> AVANT GR TEST 6
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=6 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 6
+>>> AVANT GR TEST 5
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=5 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 5
+>>> AVANT GR TEST 4
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=4 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 4
+>>> AVANT GR TEST 3
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=3 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 3
+>>> AVANT GR TEST 2
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=2 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 2
+>>> AVANT GR TEST 1
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=1 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 1
+>>> AVANT GR TEST 0
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=0 réel_gRdB=59 LNA=3 curr=47.55 max=105.00 min=-1.60
+>>> APRES GR TEST 0
+>>> TEST LNA STATE 4
+>>> AVANT GR TEST 59
+STABLE : gRdB=58 après environ 100 ms
+GR TEST : demandé=59 réel_gRdB=58 LNA=4 curr=41.80 max=105.00 min=-1.60
+>>> APRES GR TEST 59
+>>> AVANT GR TEST 58
+STABLE : gRdB=57 après environ 100 ms
+GR TEST : demandé=58 réel_gRdB=57 LNA=4 curr=42.80 max=105.00 min=-1.60
+>>> APRES GR TEST 58
+>>> AVANT GR TEST 57
+STABLE : gRdB=57 après environ 100 ms
+GR TEST : demandé=57 réel_gRdB=57 LNA=4 curr=42.80 max=105.00 min=-1.60
+>>> APRES GR TEST 57
+>>> AVANT GR TEST 56
+STABLE : gRdB=56 après environ 100 ms
+GR TEST : demandé=56 réel_gRdB=56 LNA=4 curr=43.80 max=105.00 min=-1.60
+>>> APRES GR TEST 56
+>>> AVANT GR TEST 55
+STABLE : gRdB=55 après environ 100 ms
+GR TEST : demandé=55 réel_gRdB=55 LNA=4 curr=44.80 max=105.00 min=-1.60
+>>> APRES GR TEST 55
+>>> AVANT GR TEST 54
+STABLE : gRdB=54 après environ 100 ms
+GR TEST : demandé=54 réel_gRdB=54 LNA=4 curr=45.80 max=105.00 min=-1.60
+>>> APRES GR TEST 54
+>>> AVANT GR TEST 53
+STABLE : gRdB=53 après environ 100 ms
+GR TEST : demandé=53 réel_gRdB=53 LNA=4 curr=46.80 max=105.00 min=-1.60
+>>> APRES GR TEST 53
+>>> AVANT GR TEST 52
+STABLE : gRdB=52 après environ 100 ms
+GR TEST : demandé=52 réel_gRdB=52 LNA=4 curr=47.80 max=105.00 min=-1.60
+>>> APRES GR TEST 52
+>>> AVANT GR TEST 51
+STABLE : gRdB=51 après environ 100 ms
+GR TEST : demandé=51 réel_gRdB=51 LNA=4 curr=48.80 max=105.00 min=-1.60
+>>> APRES GR TEST 51
+>>> AVANT GR TEST 50
+STABLE : gRdB=50 après environ 100 ms
+GR TEST : demandé=50 réel_gRdB=50 LNA=4 curr=49.80 max=105.00 min=-1.60
+>>> APRES GR TEST 50
+>>> AVANT GR TEST 49
+STABLE : gRdB=49 après environ 100 ms
+GR TEST : demandé=49 réel_gRdB=49 LNA=4 curr=50.80 max=105.00 min=-1.60
+>>> APRES GR TEST 49
+>>> AVANT GR TEST 48
+STABLE : gRdB=48 après environ 100 ms
+GR TEST : demandé=48 réel_gRdB=48 LNA=4 curr=51.80 max=105.00 min=-1.60
+>>> APRES GR TEST 48
+>>> AVANT GR TEST 47
+STABLE : gRdB=47 après environ 100 ms
+GR TEST : demandé=47 réel_gRdB=47 LNA=4 curr=52.80 max=105.00 min=-1.60
+>>> APRES GR TEST 47
+>>> AVANT GR TEST 46
+STABLE : gRdB=46 après environ 100 ms
+GR TEST : demandé=46 réel_gRdB=46 LNA=4 curr=53.80 max=105.00 min=-1.60
+>>> APRES GR TEST 46
+>>> AVANT GR TEST 45
+STABLE : gRdB=45 après environ 100 ms
+GR TEST : demandé=45 réel_gRdB=45 LNA=4 curr=54.80 max=105.00 min=-1.60
+>>> APRES GR TEST 45
+>>> AVANT GR TEST 44
+STABLE : gRdB=44 après environ 100 ms
+GR TEST : demandé=44 réel_gRdB=44 LNA=4 curr=55.80 max=105.00 min=-1.60
+>>> APRES GR TEST 44
+>>> AVANT GR TEST 43
+STABLE : gRdB=44 après environ 100 ms
+GR TEST : demandé=43 réel_gRdB=44 LNA=4 curr=55.80 max=105.00 min=-1.60
+>>> APRES GR TEST 43
+>>> AVANT GR TEST 42
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=42 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 42
+>>> AVANT GR TEST 41
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=41 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 41
+>>> AVANT GR TEST 40
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=40 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 40
+>>> AVANT GR TEST 39
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=39 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 39
+>>> AVANT GR TEST 38
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=38 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 38
+>>> AVANT GR TEST 37
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=37 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 37
+>>> AVANT GR TEST 36
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=36 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 36
+>>> AVANT GR TEST 35
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=35 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 35
+>>> AVANT GR TEST 34
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=34 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 34
+>>> AVANT GR TEST 33
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=33 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 33
+>>> AVANT GR TEST 32
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=32 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 32
+>>> AVANT GR TEST 31
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=31 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 31
+>>> AVANT GR TEST 30
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=30 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 30
+>>> AVANT GR TEST 29
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=29 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 29
+>>> AVANT GR TEST 28
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=28 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 28
+>>> AVANT GR TEST 27
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=27 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 27
+>>> AVANT GR TEST 26
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=26 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 26
+>>> AVANT GR TEST 25
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=25 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 25
+>>> AVANT GR TEST 24
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=24 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 24
+>>> AVANT GR TEST 23
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=23 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 23
+>>> AVANT GR TEST 22
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=22 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 22
+>>> AVANT GR TEST 21
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=21 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 21
+>>> AVANT GR TEST 20
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=20 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 20
+>>> AVANT GR TEST 19
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=19 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 19
+>>> AVANT GR TEST 18
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=18 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 18
+>>> AVANT GR TEST 17
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=17 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 17
+>>> AVANT GR TEST 16
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=16 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 16
+>>> AVANT GR TEST 15
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=15 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 15
+>>> AVANT GR TEST 14
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=14 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 14
+>>> AVANT GR TEST 13
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=13 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 13
+>>> AVANT GR TEST 12
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=12 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 12
+>>> AVANT GR TEST 11
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=11 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 11
+>>> AVANT GR TEST 10
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=10 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 10
+>>> AVANT GR TEST 9
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=9 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 9
+>>> AVANT GR TEST 8
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=8 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 8
+>>> AVANT GR TEST 7
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=7 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 7
+>>> AVANT GR TEST 6
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=6 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 6
+>>> AVANT GR TEST 5
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=5 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 5
+>>> AVANT GR TEST 4
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=4 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 4
+>>> AVANT GR TEST 3
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=3 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 3
+>>> AVANT GR TEST 2
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=2 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 2
+>>> AVANT GR TEST 1
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=1 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 1
+>>> AVANT GR TEST 0
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=0 réel_gRdB=59 LNA=4 curr=40.80 max=105.00 min=-1.60
+>>> APRES GR TEST 0
+>>> TEST LNA STATE 5
+>>> AVANT GR TEST 59
+STABLE : gRdB=58 après environ 100 ms
+GR TEST : demandé=59 réel_gRdB=58 LNA=5 curr=35.60 max=105.00 min=-1.60
+>>> APRES GR TEST 59
+>>> AVANT GR TEST 58
+STABLE : gRdB=57 après environ 100 ms
+GR TEST : demandé=58 réel_gRdB=57 LNA=5 curr=36.60 max=105.00 min=-1.60
+>>> APRES GR TEST 58
+>>> AVANT GR TEST 57
+STABLE : gRdB=56 après environ 100 ms
+GR TEST : demandé=57 réel_gRdB=56 LNA=5 curr=37.60 max=105.00 min=-1.60
+>>> APRES GR TEST 57
+>>> AVANT GR TEST 56
+STABLE : gRdB=56 après environ 100 ms
+GR TEST : demandé=56 réel_gRdB=56 LNA=5 curr=37.60 max=105.00 min=-1.60
+>>> APRES GR TEST 56
+>>> AVANT GR TEST 55
+STABLE : gRdB=55 après environ 100 ms
+GR TEST : demandé=55 réel_gRdB=55 LNA=5 curr=38.60 max=105.00 min=-1.60
+>>> APRES GR TEST 55
+>>> AVANT GR TEST 54
+STABLE : gRdB=54 après environ 100 ms
+GR TEST : demandé=54 réel_gRdB=54 LNA=5 curr=39.60 max=105.00 min=-1.60
+>>> APRES GR TEST 54
+>>> AVANT GR TEST 53
+STABLE : gRdB=53 après environ 100 ms
+GR TEST : demandé=53 réel_gRdB=53 LNA=5 curr=40.60 max=105.00 min=-1.60
+>>> APRES GR TEST 53
+>>> AVANT GR TEST 52
+STABLE : gRdB=52 après environ 100 ms
+GR TEST : demandé=52 réel_gRdB=52 LNA=5 curr=41.60 max=105.00 min=-1.60
+>>> APRES GR TEST 52
+>>> AVANT GR TEST 51
+STABLE : gRdB=51 après environ 100 ms
+GR TEST : demandé=51 réel_gRdB=51 LNA=5 curr=42.60 max=105.00 min=-1.60
+>>> APRES GR TEST 51
+>>> AVANT GR TEST 50
+STABLE : gRdB=50 après environ 100 ms
+GR TEST : demandé=50 réel_gRdB=50 LNA=5 curr=43.60 max=105.00 min=-1.60
+>>> APRES GR TEST 50
+>>> AVANT GR TEST 49
+STABLE : gRdB=49 après environ 100 ms
+GR TEST : demandé=49 réel_gRdB=49 LNA=5 curr=44.60 max=105.00 min=-1.60
+>>> APRES GR TEST 49
+>>> AVANT GR TEST 48
+STABLE : gRdB=48 après environ 100 ms
+GR TEST : demandé=48 réel_gRdB=48 LNA=5 curr=45.60 max=105.00 min=-1.60
+>>> APRES GR TEST 48
+>>> AVANT GR TEST 47
+STABLE : gRdB=47 après environ 100 ms
+GR TEST : demandé=47 réel_gRdB=47 LNA=5 curr=46.60 max=105.00 min=-1.60
+>>> APRES GR TEST 47
+>>> AVANT GR TEST 46
+STABLE : gRdB=46 après environ 100 ms
+GR TEST : demandé=46 réel_gRdB=46 LNA=5 curr=47.60 max=105.00 min=-1.60
+>>> APRES GR TEST 46
+>>> AVANT GR TEST 45
+STABLE : gRdB=45 après environ 100 ms
+GR TEST : demandé=45 réel_gRdB=45 LNA=5 curr=48.60 max=105.00 min=-1.60
+>>> APRES GR TEST 45
+>>> AVANT GR TEST 44
+STABLE : gRdB=44 après environ 100 ms
+GR TEST : demandé=44 réel_gRdB=44 LNA=5 curr=49.60 max=105.00 min=-1.60
+>>> APRES GR TEST 44
+>>> AVANT GR TEST 43
+STABLE : gRdB=43 après environ 100 ms
+GR TEST : demandé=43 réel_gRdB=43 LNA=5 curr=50.60 max=105.00 min=-1.60
+>>> APRES GR TEST 43
+>>> AVANT GR TEST 42
+STABLE : gRdB=42 après environ 100 ms
+GR TEST : demandé=42 réel_gRdB=42 LNA=5 curr=51.60 max=105.00 min=-1.60
+>>> APRES GR TEST 42
+>>> AVANT GR TEST 41
+STABLE : gRdB=41 après environ 100 ms
+GR TEST : demandé=41 réel_gRdB=41 LNA=5 curr=52.60 max=105.00 min=-1.60
+>>> APRES GR TEST 41
+>>> AVANT GR TEST 40
+STABLE : gRdB=40 après environ 100 ms
+GR TEST : demandé=40 réel_gRdB=40 LNA=5 curr=53.60 max=105.00 min=-1.60
+>>> APRES GR TEST 40
+>>> AVANT GR TEST 39
+STABLE : gRdB=40 après environ 100 ms
+GR TEST : demandé=39 réel_gRdB=40 LNA=5 curr=53.60 max=105.00 min=-1.60
+>>> APRES GR TEST 39
+>>> AVANT GR TEST 38
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=38 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 38
+>>> AVANT GR TEST 37
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=37 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 37
+>>> AVANT GR TEST 36
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=36 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 36
+>>> AVANT GR TEST 35
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=35 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 35
+>>> AVANT GR TEST 34
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=34 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 34
+>>> AVANT GR TEST 33
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=33 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 33
+>>> AVANT GR TEST 32
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=32 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 32
+>>> AVANT GR TEST 31
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=31 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 31
+>>> AVANT GR TEST 30
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=30 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 30
+>>> AVANT GR TEST 29
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=29 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 29
+>>> AVANT GR TEST 28
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=28 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 28
+>>> AVANT GR TEST 27
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=27 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 27
+>>> AVANT GR TEST 26
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=26 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 26
+>>> AVANT GR TEST 25
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=25 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 25
+>>> AVANT GR TEST 24
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=24 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 24
+>>> AVANT GR TEST 23
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=23 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 23
+>>> AVANT GR TEST 22
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=22 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 22
+>>> AVANT GR TEST 21
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=21 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 21
+>>> AVANT GR TEST 20
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=20 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 20
+>>> AVANT GR TEST 19
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=19 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 19
+>>> AVANT GR TEST 18
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=18 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 18
+>>> AVANT GR TEST 17
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=17 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 17
+>>> AVANT GR TEST 16
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=16 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 16
+>>> AVANT GR TEST 15
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=15 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 15
+>>> AVANT GR TEST 14
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=14 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 14
+>>> AVANT GR TEST 13
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=13 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 13
+>>> AVANT GR TEST 12
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=12 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 12
+>>> AVANT GR TEST 11
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=11 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 11
+>>> AVANT GR TEST 10
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=10 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 10
+>>> AVANT GR TEST 9
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=9 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 9
+>>> AVANT GR TEST 8
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=8 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 8
+>>> AVANT GR TEST 7
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=7 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 7
+>>> AVANT GR TEST 6
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=6 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 6
+>>> AVANT GR TEST 5
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=5 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 5
+>>> AVANT GR TEST 4
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=4 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 4
+>>> AVANT GR TEST 3
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=3 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 3
+>>> AVANT GR TEST 2
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=2 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 2
+>>> AVANT GR TEST 1
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=1 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 1
+>>> AVANT GR TEST 0
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=0 réel_gRdB=59 LNA=5 curr=34.60 max=105.00 min=-1.60
+>>> APRES GR TEST 0
+>>> TEST LNA STATE 6
+>>> AVANT GR TEST 59
+STABLE : gRdB=58 après environ 100 ms
+GR TEST : demandé=59 réel_gRdB=58 LNA=6 curr=29.30 max=105.00 min=-1.60
+>>> APRES GR TEST 59
+>>> AVANT GR TEST 58
+STABLE : gRdB=57 après environ 100 ms
+GR TEST : demandé=58 réel_gRdB=57 LNA=6 curr=30.30 max=105.00 min=-1.60
+>>> APRES GR TEST 58
+>>> AVANT GR TEST 57
+STABLE : gRdB=56 après environ 100 ms
+GR TEST : demandé=57 réel_gRdB=56 LNA=6 curr=31.30 max=105.00 min=-1.60
+>>> APRES GR TEST 57
+>>> AVANT GR TEST 56
+STABLE : gRdB=55 après environ 100 ms
+GR TEST : demandé=56 réel_gRdB=55 LNA=6 curr=32.30 max=105.00 min=-1.60
+>>> APRES GR TEST 56
+>>> AVANT GR TEST 55
+STABLE : gRdB=55 après environ 100 ms
+GR TEST : demandé=55 réel_gRdB=55 LNA=6 curr=32.30 max=105.00 min=-1.60
+>>> APRES GR TEST 55
+>>> AVANT GR TEST 54
+STABLE : gRdB=54 après environ 100 ms
+GR TEST : demandé=54 réel_gRdB=54 LNA=6 curr=33.30 max=105.00 min=-1.60
+>>> APRES GR TEST 54
+>>> AVANT GR TEST 53
+STABLE : gRdB=53 après environ 100 ms
+GR TEST : demandé=53 réel_gRdB=53 LNA=6 curr=34.30 max=105.00 min=-1.60
+>>> APRES GR TEST 53
+>>> AVANT GR TEST 52
+STABLE : gRdB=52 après environ 100 ms
+GR TEST : demandé=52 réel_gRdB=52 LNA=6 curr=35.30 max=105.00 min=-1.60
+>>> APRES GR TEST 52
+>>> AVANT GR TEST 51
+STABLE : gRdB=51 après environ 100 ms
+GR TEST : demandé=51 réel_gRdB=51 LNA=6 curr=36.30 max=105.00 min=-1.60
+>>> APRES GR TEST 51
+>>> AVANT GR TEST 50
+STABLE : gRdB=49 après environ 100 ms
+GR TEST : demandé=50 réel_gRdB=49 LNA=6 curr=38.30 max=105.00 min=-1.60
+>>> APRES GR TEST 50
+>>> AVANT GR TEST 49
+STABLE : gRdB=49 après environ 100 ms
+GR TEST : demandé=49 réel_gRdB=49 LNA=6 curr=38.30 max=105.00 min=-1.60
+>>> APRES GR TEST 49
+>>> AVANT GR TEST 48
+STABLE : gRdB=48 après environ 100 ms
+GR TEST : demandé=48 réel_gRdB=48 LNA=6 curr=39.30 max=105.00 min=-1.60
+>>> APRES GR TEST 48
+>>> AVANT GR TEST 47
+STABLE : gRdB=47 après environ 100 ms
+GR TEST : demandé=47 réel_gRdB=47 LNA=6 curr=40.30 max=105.00 min=-1.60
+>>> APRES GR TEST 47
+>>> AVANT GR TEST 46
+STABLE : gRdB=45 après environ 100 ms
+GR TEST : demandé=46 réel_gRdB=45 LNA=6 curr=42.30 max=105.00 min=-1.60
+>>> APRES GR TEST 46
+>>> AVANT GR TEST 45
+STABLE : gRdB=44 après environ 100 ms
+GR TEST : demandé=45 réel_gRdB=44 LNA=6 curr=43.30 max=105.00 min=-1.60
+>>> APRES GR TEST 45
+>>> AVANT GR TEST 44
+STABLE : gRdB=44 après environ 100 ms
+GR TEST : demandé=44 réel_gRdB=44 LNA=6 curr=43.30 max=105.00 min=-1.60
+>>> APRES GR TEST 44
+>>> AVANT GR TEST 43
+STABLE : gRdB=43 après environ 100 ms
+GR TEST : demandé=43 réel_gRdB=43 LNA=6 curr=44.30 max=105.00 min=-1.60
+>>> APRES GR TEST 43
+>>> AVANT GR TEST 42
+STABLE : gRdB=42 après environ 100 ms
+GR TEST : demandé=42 réel_gRdB=42 LNA=6 curr=45.30 max=105.00 min=-1.60
+>>> APRES GR TEST 42
+>>> AVANT GR TEST 41
+STABLE : gRdB=41 après environ 100 ms
+GR TEST : demandé=41 réel_gRdB=41 LNA=6 curr=46.30 max=105.00 min=-1.60
+>>> APRES GR TEST 41
+>>> AVANT GR TEST 40
+STABLE : gRdB=40 après environ 100 ms
+GR TEST : demandé=40 réel_gRdB=40 LNA=6 curr=47.30 max=105.00 min=-1.60
+>>> APRES GR TEST 40
+>>> AVANT GR TEST 39
+STABLE : gRdB=39 après environ 100 ms
+GR TEST : demandé=39 réel_gRdB=39 LNA=6 curr=48.30 max=105.00 min=-1.60
+>>> APRES GR TEST 39
+>>> AVANT GR TEST 38
+STABLE : gRdB=38 après environ 100 ms
+GR TEST : demandé=38 réel_gRdB=38 LNA=6 curr=49.30 max=105.00 min=-1.60
+>>> APRES GR TEST 38
+>>> AVANT GR TEST 37
+STABLE : gRdB=38 après environ 100 ms
+GR TEST : demandé=37 réel_gRdB=38 LNA=6 curr=49.30 max=105.00 min=-1.60
+>>> APRES GR TEST 37
+>>> AVANT GR TEST 36
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=36 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 36
+>>> AVANT GR TEST 35
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=35 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 35
+>>> AVANT GR TEST 34
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=34 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 34
+>>> AVANT GR TEST 33
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=33 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 33
+>>> AVANT GR TEST 32
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=32 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 32
+>>> AVANT GR TEST 31
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=31 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 31
+>>> AVANT GR TEST 30
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=30 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 30
+>>> AVANT GR TEST 29
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=29 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 29
+>>> AVANT GR TEST 28
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=28 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 28
+>>> AVANT GR TEST 27
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=27 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 27
+>>> AVANT GR TEST 26
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=26 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 26
+>>> AVANT GR TEST 25
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=25 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 25
+>>> AVANT GR TEST 24
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=24 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 24
+>>> AVANT GR TEST 23
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=23 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 23
+>>> AVANT GR TEST 22
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=22 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 22
+>>> AVANT GR TEST 21
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=21 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 21
+>>> AVANT GR TEST 20
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=20 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 20
+>>> AVANT GR TEST 19
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=19 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 19
+>>> AVANT GR TEST 18
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=18 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 18
+>>> AVANT GR TEST 17
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=17 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 17
+>>> AVANT GR TEST 16
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=16 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 16
+>>> AVANT GR TEST 15
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=15 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 15
+>>> AVANT GR TEST 14
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=14 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 14
+>>> AVANT GR TEST 13
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=13 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 13
+>>> AVANT GR TEST 12
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=12 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 12
+>>> AVANT GR TEST 11
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=11 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 11
+>>> AVANT GR TEST 10
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=10 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 10
+>>> AVANT GR TEST 9
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=9 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 9
+>>> AVANT GR TEST 8
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=8 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 8
+>>> AVANT GR TEST 7
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=7 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 7
+>>> AVANT GR TEST 6
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=6 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 6
+>>> AVANT GR TEST 5
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=5 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 5
+>>> AVANT GR TEST 4
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=4 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 4
+>>> AVANT GR TEST 3
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=3 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 3
+>>> AVANT GR TEST 2
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=2 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 2
+>>> AVANT GR TEST 1
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=1 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 1
+>>> AVANT GR TEST 0
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=0 réel_gRdB=59 LNA=6 curr=28.30 max=105.00 min=-1.60
+>>> APRES GR TEST 0
+>>> TEST LNA STATE 7
+>>> AVANT GR TEST 59
+STABLE : gRdB=58 après environ 100 ms
+GR TEST : demandé=59 réel_gRdB=58 LNA=7 curr=23.45 max=105.00 min=-1.60
+>>> APRES GR TEST 59
+>>> AVANT GR TEST 58
+STABLE : gRdB=57 après environ 100 ms
+GR TEST : demandé=58 réel_gRdB=57 LNA=7 curr=24.45 max=105.00 min=-1.60
+>>> APRES GR TEST 58
+>>> AVANT GR TEST 57
+STABLE : gRdB=56 après environ 100 ms
+GR TEST : demandé=57 réel_gRdB=56 LNA=7 curr=25.45 max=105.00 min=-1.60
+>>> APRES GR TEST 57
+>>> AVANT GR TEST 56
+STABLE : gRdB=55 après environ 100 ms
+GR TEST : demandé=56 réel_gRdB=55 LNA=7 curr=26.45 max=105.00 min=-1.60
+>>> APRES GR TEST 56
+>>> AVANT GR TEST 55
+STABLE : gRdB=55 après environ 100 ms
+GR TEST : demandé=55 réel_gRdB=55 LNA=7 curr=26.45 max=105.00 min=-1.60
+>>> APRES GR TEST 55
+>>> AVANT GR TEST 54
+STABLE : gRdB=54 après environ 100 ms
+GR TEST : demandé=54 réel_gRdB=54 LNA=7 curr=27.45 max=105.00 min=-1.60
+>>> APRES GR TEST 54
+>>> AVANT GR TEST 53
+STABLE : gRdB=53 après environ 100 ms
+GR TEST : demandé=53 réel_gRdB=53 LNA=7 curr=28.45 max=105.00 min=-1.60
+>>> APRES GR TEST 53
+>>> AVANT GR TEST 52
+STABLE : gRdB=52 après environ 100 ms
+GR TEST : demandé=52 réel_gRdB=52 LNA=7 curr=29.45 max=105.00 min=-1.60
+>>> APRES GR TEST 52
+>>> AVANT GR TEST 51
+STABLE : gRdB=50 après environ 100 ms
+GR TEST : demandé=51 réel_gRdB=50 LNA=7 curr=31.45 max=105.00 min=-1.60
+>>> APRES GR TEST 51
+>>> AVANT GR TEST 50
+STABLE : gRdB=50 après environ 100 ms
+GR TEST : demandé=50 réel_gRdB=50 LNA=7 curr=31.45 max=105.00 min=-1.60
+>>> APRES GR TEST 50
+>>> AVANT GR TEST 49
+STABLE : gRdB=49 après environ 100 ms
+GR TEST : demandé=49 réel_gRdB=49 LNA=7 curr=32.45 max=105.00 min=-1.60
+>>> APRES GR TEST 49
+>>> AVANT GR TEST 48
+STABLE : gRdB=48 après environ 100 ms
+GR TEST : demandé=48 réel_gRdB=48 LNA=7 curr=33.45 max=105.00 min=-1.60
+>>> APRES GR TEST 48
+>>> AVANT GR TEST 47
+STABLE : gRdB=47 après environ 100 ms
+GR TEST : demandé=47 réel_gRdB=47 LNA=7 curr=34.45 max=105.00 min=-1.60
+>>> APRES GR TEST 47
+>>> AVANT GR TEST 46
+STABLE : gRdB=45 après environ 100 ms
+GR TEST : demandé=46 réel_gRdB=45 LNA=7 curr=36.45 max=105.00 min=-1.60
+>>> APRES GR TEST 46
+>>> AVANT GR TEST 45
+STABLE : gRdB=44 après environ 100 ms
+GR TEST : demandé=45 réel_gRdB=44 LNA=7 curr=37.45 max=105.00 min=-1.60
+>>> APRES GR TEST 45
+>>> AVANT GR TEST 44
+STABLE : gRdB=43 après environ 100 ms
+GR TEST : demandé=44 réel_gRdB=43 LNA=7 curr=38.45 max=105.00 min=-1.60
+>>> APRES GR TEST 44
+>>> AVANT GR TEST 43
+STABLE : gRdB=43 après environ 100 ms
+GR TEST : demandé=43 réel_gRdB=43 LNA=7 curr=38.45 max=105.00 min=-1.60
+>>> APRES GR TEST 43
+>>> AVANT GR TEST 42
+STABLE : gRdB=42 après environ 100 ms
+GR TEST : demandé=42 réel_gRdB=42 LNA=7 curr=39.45 max=105.00 min=-1.60
+>>> APRES GR TEST 42
+>>> AVANT GR TEST 41
+STABLE : gRdB=41 après environ 100 ms
+GR TEST : demandé=41 réel_gRdB=41 LNA=7 curr=40.45 max=105.00 min=-1.60
+>>> APRES GR TEST 41
+>>> AVANT GR TEST 40
+STABLE : gRdB=40 après environ 100 ms
+GR TEST : demandé=40 réel_gRdB=40 LNA=7 curr=41.45 max=105.00 min=-1.60
+>>> APRES GR TEST 40
+>>> AVANT GR TEST 39
+STABLE : gRdB=39 après environ 100 ms
+GR TEST : demandé=39 réel_gRdB=39 LNA=7 curr=42.45 max=105.00 min=-1.60
+>>> APRES GR TEST 39
+>>> AVANT GR TEST 38
+STABLE : gRdB=38 après environ 100 ms
+GR TEST : demandé=38 réel_gRdB=38 LNA=7 curr=43.45 max=105.00 min=-1.60
+>>> APRES GR TEST 38
+>>> AVANT GR TEST 37
+STABLE : gRdB=38 après environ 100 ms
+GR TEST : demandé=37 réel_gRdB=38 LNA=7 curr=43.45 max=105.00 min=-1.60
+>>> APRES GR TEST 37
+>>> AVANT GR TEST 36
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=36 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 36
+>>> AVANT GR TEST 35
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=35 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 35
+>>> AVANT GR TEST 34
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=34 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 34
+>>> AVANT GR TEST 33
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=33 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 33
+>>> AVANT GR TEST 32
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=32 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 32
+>>> AVANT GR TEST 31
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=31 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 31
+>>> AVANT GR TEST 30
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=30 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 30
+>>> AVANT GR TEST 29
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=29 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 29
+>>> AVANT GR TEST 28
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=28 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 28
+>>> AVANT GR TEST 27
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=27 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 27
+>>> AVANT GR TEST 26
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=26 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 26
+>>> AVANT GR TEST 25
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=25 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 25
+>>> AVANT GR TEST 24
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=24 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 24
+>>> AVANT GR TEST 23
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=23 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 23
+>>> AVANT GR TEST 22
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=22 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 22
+>>> AVANT GR TEST 21
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=21 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 21
+>>> AVANT GR TEST 20
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=20 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 20
+>>> AVANT GR TEST 19
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=19 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 19
+>>> AVANT GR TEST 18
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=18 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 18
+>>> AVANT GR TEST 17
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=17 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 17
+>>> AVANT GR TEST 16
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=16 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 16
+>>> AVANT GR TEST 15
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=15 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 15
+>>> AVANT GR TEST 14
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=14 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 14
+>>> AVANT GR TEST 13
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=13 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 13
+>>> AVANT GR TEST 12
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=12 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 12
+>>> AVANT GR TEST 11
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=11 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 11
+>>> AVANT GR TEST 10
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=10 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 10
+>>> AVANT GR TEST 9
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=9 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 9
+>>> AVANT GR TEST 8
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=8 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 8
+>>> AVANT GR TEST 7
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=7 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 7
+>>> AVANT GR TEST 6
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=6 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 6
+>>> AVANT GR TEST 5
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=5 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 5
+>>> AVANT GR TEST 4
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=4 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 4
+>>> AVANT GR TEST 3
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=3 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 3
+>>> AVANT GR TEST 2
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=2 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 2
+>>> AVANT GR TEST 1
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=1 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 1
+>>> AVANT GR TEST 0
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=0 réel_gRdB=59 LNA=7 curr=22.45 max=105.00 min=-1.60
+>>> APRES GR TEST 0
+>>> TEST LNA STATE 8
+>>> AVANT GR TEST 59
+STABLE : gRdB=58 après environ 100 ms
+GR TEST : demandé=59 réel_gRdB=58 LNA=8 curr=4.45 max=105.00 min=-1.60
+>>> APRES GR TEST 59
+>>> AVANT GR TEST 58
+STABLE : gRdB=57 après environ 100 ms
+GR TEST : demandé=58 réel_gRdB=57 LNA=8 curr=5.45 max=105.00 min=-1.60
+>>> APRES GR TEST 58
+>>> AVANT GR TEST 57
+STABLE : gRdB=56 après environ 100 ms
+GR TEST : demandé=57 réel_gRdB=56 LNA=8 curr=6.45 max=105.00 min=-1.60
+>>> APRES GR TEST 57
+>>> AVANT GR TEST 56
+STABLE : gRdB=55 après environ 100 ms
+GR TEST : demandé=56 réel_gRdB=55 LNA=8 curr=7.45 max=105.00 min=-1.60
+>>> APRES GR TEST 56
+>>> AVANT GR TEST 55
+STABLE : gRdB=54 après environ 100 ms
+GR TEST : demandé=55 réel_gRdB=54 LNA=8 curr=8.45 max=105.00 min=-1.60
+>>> APRES GR TEST 55
+>>> AVANT GR TEST 54
+STABLE : gRdB=53 après environ 100 ms
+GR TEST : demandé=54 réel_gRdB=53 LNA=8 curr=9.45 max=105.00 min=-1.60
+>>> APRES GR TEST 54
+>>> AVANT GR TEST 53
+STABLE : gRdB=52 après environ 100 ms
+GR TEST : demandé=53 réel_gRdB=52 LNA=8 curr=10.45 max=105.00 min=-1.60
+>>> APRES GR TEST 53
+>>> AVANT GR TEST 52
+STABLE : gRdB=51 après environ 100 ms
+GR TEST : demandé=52 réel_gRdB=51 LNA=8 curr=11.45 max=105.00 min=-1.60
+>>> APRES GR TEST 52
+>>> AVANT GR TEST 51
+STABLE : gRdB=50 après environ 100 ms
+GR TEST : demandé=51 réel_gRdB=50 LNA=8 curr=12.45 max=105.00 min=-1.60
+>>> APRES GR TEST 51
+>>> AVANT GR TEST 50
+STABLE : gRdB=49 après environ 100 ms
+GR TEST : demandé=50 réel_gRdB=49 LNA=8 curr=13.45 max=105.00 min=-1.60
+>>> APRES GR TEST 50
+>>> AVANT GR TEST 49
+STABLE : gRdB=49 après environ 100 ms
+GR TEST : demandé=49 réel_gRdB=49 LNA=8 curr=13.45 max=105.00 min=-1.60
+>>> APRES GR TEST 49
+>>> AVANT GR TEST 48
+STABLE : gRdB=48 après environ 100 ms
+GR TEST : demandé=48 réel_gRdB=48 LNA=8 curr=14.45 max=105.00 min=-1.60
+>>> APRES GR TEST 48
+>>> AVANT GR TEST 47
+STABLE : gRdB=47 après environ 100 ms
+GR TEST : demandé=47 réel_gRdB=47 LNA=8 curr=15.45 max=105.00 min=-1.60
+>>> APRES GR TEST 47
+>>> AVANT GR TEST 46
+STABLE : gRdB=46 après environ 100 ms
+GR TEST : demandé=46 réel_gRdB=46 LNA=8 curr=16.45 max=105.00 min=-1.60
+>>> APRES GR TEST 46
+>>> AVANT GR TEST 45
+STABLE : gRdB=45 après environ 100 ms
+GR TEST : demandé=45 réel_gRdB=45 LNA=8 curr=17.45 max=105.00 min=-1.60
+>>> APRES GR TEST 45
+>>> AVANT GR TEST 44
+STABLE : gRdB=44 après environ 100 ms
+GR TEST : demandé=44 réel_gRdB=44 LNA=8 curr=18.45 max=105.00 min=-1.60
+>>> APRES GR TEST 44
+>>> AVANT GR TEST 43
+STABLE : gRdB=43 après environ 100 ms
+GR TEST : demandé=43 réel_gRdB=43 LNA=8 curr=19.45 max=105.00 min=-1.60
+>>> APRES GR TEST 43
+>>> AVANT GR TEST 42
+STABLE : gRdB=42 après environ 100 ms
+GR TEST : demandé=42 réel_gRdB=42 LNA=8 curr=20.45 max=105.00 min=-1.60
+>>> APRES GR TEST 42
+>>> AVANT GR TEST 41
+STABLE : gRdB=41 après environ 100 ms
+GR TEST : demandé=41 réel_gRdB=41 LNA=8 curr=21.45 max=105.00 min=-1.60
+>>> APRES GR TEST 41
+>>> AVANT GR TEST 40
+STABLE : gRdB=39 après environ 100 ms
+GR TEST : demandé=40 réel_gRdB=39 LNA=8 curr=23.45 max=105.00 min=-1.60
+>>> APRES GR TEST 40
+>>> AVANT GR TEST 39
+STABLE : gRdB=38 après environ 100 ms
+GR TEST : demandé=39 réel_gRdB=38 LNA=8 curr=24.45 max=105.00 min=-1.60
+>>> APRES GR TEST 39
+>>> AVANT GR TEST 38
+STABLE : gRdB=38 après environ 100 ms
+GR TEST : demandé=38 réel_gRdB=38 LNA=8 curr=24.45 max=105.00 min=-1.60
+>>> APRES GR TEST 38
+>>> AVANT GR TEST 37
+STABLE : gRdB=37 après environ 100 ms
+GR TEST : demandé=37 réel_gRdB=37 LNA=8 curr=25.45 max=105.00 min=-1.60
+>>> APRES GR TEST 37
+>>> AVANT GR TEST 36
+STABLE : gRdB=36 après environ 100 ms
+GR TEST : demandé=36 réel_gRdB=36 LNA=8 curr=26.45 max=105.00 min=-1.60
+>>> APRES GR TEST 36
+>>> AVANT GR TEST 35
+STABLE : gRdB=35 après environ 100 ms
+GR TEST : demandé=35 réel_gRdB=35 LNA=8 curr=27.45 max=105.00 min=-1.60
+>>> APRES GR TEST 35
+>>> AVANT GR TEST 34
+STABLE : gRdB=33 après environ 100 ms
+GR TEST : demandé=34 réel_gRdB=33 LNA=8 curr=29.45 max=105.00 min=-1.60
+>>> APRES GR TEST 34
+>>> AVANT GR TEST 33
+STABLE : gRdB=33 après environ 100 ms
+GR TEST : demandé=33 réel_gRdB=33 LNA=8 curr=29.45 max=105.00 min=-1.60
+>>> APRES GR TEST 33
+>>> AVANT GR TEST 32
+STABLE : gRdB=32 après environ 100 ms
+GR TEST : demandé=32 réel_gRdB=32 LNA=8 curr=30.45 max=105.00 min=-1.60
+>>> APRES GR TEST 32
+>>> AVANT GR TEST 31
+STABLE : gRdB=31 après environ 100 ms
+GR TEST : demandé=31 réel_gRdB=31 LNA=8 curr=31.45 max=105.00 min=-1.60
+>>> APRES GR TEST 31
+>>> AVANT GR TEST 30
+STABLE : gRdB=30 après environ 100 ms
+GR TEST : demandé=30 réel_gRdB=30 LNA=8 curr=32.45 max=105.00 min=-1.60
+>>> APRES GR TEST 30
+>>> AVANT GR TEST 29
+STABLE : gRdB=29 après environ 100 ms
+GR TEST : demandé=29 réel_gRdB=29 LNA=8 curr=33.45 max=105.00 min=-1.60
+>>> APRES GR TEST 29
+>>> AVANT GR TEST 28
+STABLE : gRdB=29 après environ 100 ms
+GR TEST : demandé=28 réel_gRdB=29 LNA=8 curr=33.45 max=105.00 min=-1.60
+>>> APRES GR TEST 28
+>>> AVANT GR TEST 27
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=27 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 27
+>>> AVANT GR TEST 26
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=26 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 26
+>>> AVANT GR TEST 25
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=25 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 25
+>>> AVANT GR TEST 24
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=24 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 24
+>>> AVANT GR TEST 23
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=23 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 23
+>>> AVANT GR TEST 22
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=22 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 22
+>>> AVANT GR TEST 21
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=21 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 21
+>>> AVANT GR TEST 20
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=20 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 20
+>>> AVANT GR TEST 19
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=19 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 19
+>>> AVANT GR TEST 18
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=18 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 18
+>>> AVANT GR TEST 17
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=17 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 17
+>>> AVANT GR TEST 16
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=16 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 16
+>>> AVANT GR TEST 15
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=15 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 15
+>>> AVANT GR TEST 14
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=14 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 14
+>>> AVANT GR TEST 13
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=13 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 13
+>>> AVANT GR TEST 12
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=12 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 12
+>>> AVANT GR TEST 11
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=11 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 11
+>>> AVANT GR TEST 10
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=10 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 10
+>>> AVANT GR TEST 9
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=9 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 9
+>>> AVANT GR TEST 8
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=8 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 8
+>>> AVANT GR TEST 7
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=7 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 7
+>>> AVANT GR TEST 6
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=6 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 6
+>>> AVANT GR TEST 5
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=5 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 5
+>>> AVANT GR TEST 4
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=4 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 4
+>>> AVANT GR TEST 3
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=3 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 3
+>>> AVANT GR TEST 2
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=2 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 2
+>>> AVANT GR TEST 1
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=1 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 1
+>>> AVANT GR TEST 0
+STABLE : gRdB=59 après environ 100 ms
+GR TEST : demandé=0 réel_gRdB=59 LNA=8 curr=3.45 max=105.00 min=-1.60
+>>> APRES GR TEST 0

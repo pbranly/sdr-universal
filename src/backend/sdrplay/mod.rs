@@ -297,6 +297,9 @@ struct CallbackContext {
     center_frequency_hz: AtomicU64,
     sample_rate: AtomicU64,
     dropped_blocks: AtomicU64,
+	lna_gr_db: AtomicU64,
+	curr_gain_milli_db: AtomicU64,
+    callback_gr_db: AtomicU64,
 }
 
 const _: () = {
@@ -497,7 +500,7 @@ unsafe extern "C" fn event_callback(
     event_id: c_int,
     tuner: c_int,
     params: *mut SdrplayEventParams,
-    _cb_context: *mut c_void,
+    cb_context: *mut c_void,
 ) {
     println!(
         "SDRplay event : eventId={} tuner={}",
@@ -509,6 +512,21 @@ unsafe extern "C" fn event_callback(
     if event_id == 0 {
         if !params.is_null() {
             let gain = (*params).gain_params;
+			if !cb_context.is_null() {
+    let context = &*(cb_context as *const CallbackContext);
+
+    context
+        .callback_gr_db
+        .store(gain.gr_db as u64, Ordering::Relaxed);
+
+    context
+        .lna_gr_db
+        .store(gain.lna_gr_db as u64, Ordering::Relaxed);
+
+    context
+        .curr_gain_milli_db
+        .store((gain.curr_gain * 1000.0) as u64, Ordering::Relaxed);
+}
 
             println!(
                 "  Gain callback : gRdB={} lnaGRdB={} currGain={:.2} dB",
@@ -544,6 +562,9 @@ impl SdrplayBackend {
             sample_rate: AtomicU64::new(2_000_000),
 
             dropped_blocks: AtomicU64::new(0),
+			lna_gr_db: AtomicU64::new(0),
+			curr_gain_milli_db: AtomicU64::new(0),
+    callback_gr_db: AtomicU64::new(0),
         });
 
         Self {
@@ -885,6 +906,7 @@ impl SdrplayBackend {
 
             let result = sdrplay_api_Update(device.dev, TUNER_A, UPDATE_TUNER_FRF, EXT1_NONE);
 
+
             if result != 0 {
                 return Err(anyhow!("sdrplay_api_Update(FRF) a échoué : {}", result));
             }
@@ -1016,6 +1038,7 @@ impl SdrplayBackend {
 
             let rx = &mut *(*params).rx_channel_a;
 
+
             rx.tuner_params.bw_type = bw_type;
 
             const UPDATE_TUNER_BW_TYPE: c_int = 0x00040000;
@@ -1035,7 +1058,507 @@ impl SdrplayBackend {
         Ok(())
     }
 
-    pub fn set_gain(&mut self, gain_db: f32) -> Result<()> {
+pub fn set_gain(&mut self, gain_db: f32) -> Result<()> {
+    if !self.connected {
+        return Err(anyhow!("SDRplay non connecté"));
+    }
+
+    if !self.device_selected {
+        return Err(anyhow!("Aucun périphérique SDRplay sélectionné"));
+    }
+
+    if !self.initialized {
+        return Err(anyhow!("SDRplay non initialisé"));
+    }
+
+    if !gain_db.is_finite() {
+        return Err(anyhow!("Gain invalide : {}", gain_db));
+    }
+
+    /*
+     * Cartographie mesurée avec le RSP1B à 145 MHz.
+     *
+     * Chaque entrée est :
+     *
+     *     (LNA state, gRdB réellement appliqué, currGain réel)
+     *
+     * La sélection se fait sur currGain afin d'obtenir le gain
+     * demandé avec une précision maximale de 1 dB.
+     */
+static GAIN_MAP: &[(u8, c_int, f32)] = &[
+    // LNA 0
+    (0, 59, 66.00),
+
+    // LNA 1
+    (1, 59, 59.80),
+
+    // LNA 2
+    (2, 59, 53.20),
+    (2, 58, 54.20),
+    (2, 57, 55.20),
+    (2, 56, 56.20),
+
+    // LNA 3
+    (3, 59, 47.55),
+    (3, 58, 48.55),
+    (3, 57, 49.55),
+    (3, 56, 50.55),
+    (3, 55, 51.55),
+    (3, 54, 52.55),
+    (3, 53, 53.55),
+    (3, 52, 54.55),
+    (3, 51, 55.55),
+    (3, 50, 56.55),
+    (3, 49, 57.55),
+
+    // LNA 4
+    (4, 59, 40.80),
+    (4, 58, 41.80),
+    (4, 57, 42.80),
+    (4, 56, 43.80),
+    (4, 55, 44.80),
+    (4, 54, 45.80),
+    (4, 53, 46.80),
+    (4, 52, 47.80),
+    (4, 51, 48.80),
+    (4, 50, 49.80),
+    (4, 49, 50.80),
+    (4, 48, 51.80),
+    (4, 47, 52.80),
+    (4, 46, 53.80),
+    (4, 45, 54.80),
+    (4, 44, 55.80),
+
+    // LNA 5
+    (5, 59, 34.60),
+    (5, 58, 35.60),
+    (5, 57, 36.60),
+    (5, 56, 37.60),
+    (5, 55, 38.60),
+    (5, 54, 39.60),
+    (5, 53, 40.60),
+    (5, 52, 41.60),
+    (5, 51, 42.60),
+    (5, 50, 43.60),
+    (5, 49, 44.60),
+    (5, 48, 45.60),
+    (5, 47, 46.60),
+    (5, 46, 47.60),
+    (5, 45, 48.60),
+    (5, 44, 49.60),
+    (5, 43, 50.60),
+    (5, 42, 51.60),
+    (5, 41, 52.60),
+    (5, 40, 53.60),
+
+    // LNA 6
+    (6, 59, 28.30),
+    (6, 58, 29.30),
+    (6, 57, 30.30),
+    (6, 56, 31.30),
+    (6, 55, 32.30),
+    (6, 54, 33.30),
+    (6, 53, 34.30),
+    (6, 52, 35.30),
+    (6, 51, 36.30),
+    (6, 49, 38.30),
+    (6, 48, 39.30),
+    (6, 47, 40.30),
+    (6, 45, 42.30),
+    (6, 44, 43.30),
+    (6, 43, 44.30),
+    (6, 42, 45.30),
+    (6, 41, 46.30),
+    (6, 40, 47.30),
+    (6, 39, 48.30),
+    (6, 38, 49.30),
+
+    // LNA 7
+    (7, 59, 22.45),
+    (7, 58, 23.45),
+    (7, 57, 24.45),
+    (7, 56, 25.45),
+    (7, 55, 26.45),
+    (7, 54, 27.45),
+    (7, 53, 28.45),
+    (7, 52, 29.45),
+    (7, 50, 31.45),
+    (7, 49, 32.45),
+    (7, 48, 33.45),
+    (7, 47, 34.45),
+    (7, 45, 36.45),
+    (7, 44, 37.45),
+    (7, 43, 38.45),
+    (7, 42, 39.45),
+    (7, 41, 40.45),
+    (7, 40, 41.45),
+    (7, 39, 42.45),
+    (7, 38, 43.45),
+
+    // LNA 8
+    (8, 59, 3.45),
+    (8, 58, 4.45),
+    (8, 57, 5.45),
+    (8, 56, 6.45),
+    (8, 55, 7.45),
+    (8, 54, 8.45),
+    (8, 53, 9.45),
+    (8, 52, 10.45),
+    (8, 51, 11.45),
+    (8, 50, 12.45),
+    (8, 49, 13.45),
+    (8, 48, 14.45),
+    (8, 47, 15.45),
+    (8, 46, 16.45),
+    (8, 45, 17.45),
+    (8, 44, 18.45),
+    (8, 43, 19.45),
+    (8, 42, 20.45),
+    (8, 41, 21.45),
+    (8, 39, 23.45),
+    (8, 38, 24.45),
+    (8, 37, 25.45),
+    (8, 36, 26.45),
+    (8, 35, 27.45),
+    (8, 33, 29.45),
+    (8, 32, 30.45),
+    (8, 31, 31.45),
+    (8, 30, 32.45),
+    (8, 29, 33.45),
+];
+
+    /*
+     * Recherche du point de calibration donnant le currGain
+     * le plus proche du gain demandé.
+     */
+    let mut best: Option<(u8, c_int, f32, f32)> = None;
+
+    for &(lna_state, gr_db, measured_gain) in GAIN_MAP {
+        let error = (measured_gain - gain_db).abs();
+
+        match best {
+            None => {
+                best = Some((lna_state, gr_db, measured_gain, error));
+            }
+            Some((_, _, _, best_error)) if error < best_error => {
+                best = Some((lna_state, gr_db, measured_gain, error));
+            }
+            _ => {}
+        }
+    }
+
+    let (lna_state, gr_db, expected_gain, error) =
+        best.ok_or_else(|| anyhow!("Aucune calibration de gain disponible"))?;
+
+    /*
+     * La cartographie mesurée ne permet pas de garantir mieux que
+     * ±1 dB pour tous les gains possibles.
+     */
+    if error > 1.0 {
+        return Err(anyhow!(
+            "Gain demandé {:.2} dB non couvert par la calibration à ±1 dB \
+             (meilleur point : {:.2} dB, erreur {:.2} dB)",
+            gain_db,
+            expected_gain,
+            error
+        ));
+    }
+
+    let device = self.selected_device.ok_or_else(|| {
+        anyhow!("Périphérique SDRplay sélectionné introuvable")
+    })?;
+
+    unsafe {
+        let mut params: *mut SdrplayDeviceParams = std::ptr::null_mut();
+
+        let result = sdrplay_api_GetDeviceParams(
+            device.dev,
+            &mut params,
+        );
+
+        if result != 0 {
+            return Err(anyhow!(
+                "sdrplay_api_GetDeviceParams a échoué : {}",
+                result
+            ));
+        }
+
+        if params.is_null() {
+            return Err(anyhow!(
+                "sdrplay_api_GetDeviceParams a retourné NULL"
+            ));
+        }
+
+        if (*params).rx_channel_a.is_null() {
+            return Err(anyhow!("rxChannelA est NULL"));
+        }
+
+        let rx = &mut *(*params).rx_channel_a;
+
+        println!(
+            "Réglage gain global : demandé={:.2} dB -> \
+             LNA={} gRdB={} gain_mesuré={:.2} dB erreur={:.2} dB",
+            gain_db,
+            lna_state,
+            gr_db,
+            expected_gain,
+            error
+        );
+
+        rx.tuner_params.gain.lna_state = lna_state;
+        rx.tuner_params.gain.gr_db = gr_db;
+
+        const UPDATE_TUNER_GR: c_int = 0x00008000;
+        const TUNER_A: c_int = 1;
+        const EXT1_NONE: c_int = 0;
+
+        /*
+         * Invalidation de l'ancien callback avant Update().
+         */
+        if let Some(context) = self.callback_context.as_ref() {
+            context
+                .callback_gr_db
+                .store(u64::MAX, Ordering::Relaxed);
+        }
+
+        let result = sdrplay_api_Update(
+            device.dev,
+            TUNER_A,
+            UPDATE_TUNER_GR,
+            EXT1_NONE,
+        );
+
+        if result != 0 {
+            return Err(anyhow!(
+                "sdrplay_api_Update(GR) a échoué : {}",
+                result
+            ));
+        }
+
+        /*
+         * Le callback confirme le gRdB réellement appliqué et fournit
+         * le currGain réel.
+         */
+        if let Some(context) = self.callback_context.as_ref() {
+            let mut callback_seen = false;
+
+            for _ in 0..100 {
+                let callback_gr_db =
+                    context.callback_gr_db.load(Ordering::Relaxed);
+
+                if callback_gr_db == gr_db as u64 {
+                    callback_seen = true;
+                    break;
+                }
+
+                std::thread::sleep(
+                    std::time::Duration::from_millis(5)
+                );
+            }
+
+            let callback_gr_db =
+                context.callback_gr_db.load(Ordering::Relaxed);
+
+            let lna_gr_db =
+                context.lna_gr_db.load(Ordering::Relaxed);
+
+            let curr_gain =
+                context.curr_gain_milli_db.load(Ordering::Relaxed)
+                    as f64 / 1000.0;
+
+            if callback_seen {
+                let callback_error =
+                    (curr_gain - gain_db as f64).abs();
+
+                println!(
+                    "Gain réel callback : gRdB={} lnaGRdB={} \
+                     currGain={:.2} dB erreur={:.2} dB",
+                    callback_gr_db,
+                    lna_gr_db,
+                    curr_gain,
+                    callback_error
+                );
+
+                if callback_error > 1.0 {
+                    return Err(anyhow!(
+                        "Gain réel hors tolérance : demandé={:.2} dB \
+                         réel={:.2} dB erreur={:.2} dB",
+                        gain_db,
+                        curr_gain,
+                        callback_error
+                    ));
+                }
+                        } else {
+                return Err(anyhow!(
+                    "SDRplay n'a pas confirmé le gRdB demandé : \
+                     demandé={} dernier={} currGain={:.2} dB",
+                    gr_db,
+                    callback_gr_db,
+                    curr_gain
+                ));
+            }
+        }
+
+        println!(
+            "Gain global appliqué : demandé={:.2} dB",
+            gain_db
+        );
+        println!("  LNA state : {}", lna_state);
+        println!("  gRdB      : {}", gr_db);
+        println!(
+            "  calibration : {:.2} dB (erreur {:.2} dB)",
+            expected_gain,
+            error
+        );
+    }
+
+    Ok(())
+}
+pub fn set_gr_db_test(&mut self, gr_db: c_int) -> Result<()> {
+    if !self.connected {
+        return Err(anyhow!("SDRplay non connecté"));
+    }
+
+    if !self.device_selected {
+        return Err(anyhow!("Aucun périphérique SDRplay sélectionné"));
+    }
+
+    if !self.initialized {
+        return Err(anyhow!("RSP1B non initialisé"));
+    }
+
+    let device = self
+        .selected_device
+        .ok_or_else(|| anyhow!("Périphérique SDRplay absent"))?;
+
+    unsafe {
+        let mut params: *mut SdrplayDeviceParams = std::ptr::null_mut();
+
+        let result =
+            sdrplay_api_GetDeviceParams(device.dev, &mut params);
+
+        if result != 0 {
+            return Err(anyhow!(
+                "GetDeviceParams() a échoué : {}",
+                result
+            ));
+        }
+
+        if params.is_null() {
+            return Err(anyhow!(
+                "GetDeviceParams() a retourné NULL"
+            ));
+        }
+
+        if (*params).rx_channel_a.is_null() {
+            return Err(anyhow!("rxChannelA est NULL"));
+        }
+
+        let rx = &mut *(*params).rx_channel_a;
+
+        rx.tuner_params.gain.gr_db = gr_db;
+
+        const UPDATE_TUNER_GR: c_int = 0x00008000;
+        const TUNER_A: c_int = 1;
+        const EXT1_NONE: c_int = 0;
+
+        let result = sdrplay_api_Update(
+            device.dev,
+            TUNER_A,
+            UPDATE_TUNER_GR,
+            EXT1_NONE,
+        );
+
+        if result != 0 {
+            return Err(anyhow!(
+                "sdrplay_api_Update(GR) a échoué : {}",
+                result
+            ));
+        }
+
+
+        let mut stable_count = 0;
+        let mut last_gr_db = -1;
+
+        for _ in 0..100 {
+            std::thread::sleep(
+                std::time::Duration::from_millis(20)
+            );
+
+            let mut check_params: *mut SdrplayDeviceParams =
+                std::ptr::null_mut();
+
+            let check_result =
+                sdrplay_api_GetDeviceParams(
+                    device.dev,
+                    &mut check_params
+                );
+
+            if check_result != 0
+                || check_params.is_null()
+                || (*check_params).rx_channel_a.is_null()
+            {
+                continue;
+            }
+
+            let check_rx = &*(*check_params).rx_channel_a;
+            let current_gr_db =
+                check_rx.tuner_params.gain.gr_db;
+
+            if current_gr_db == last_gr_db {
+                stable_count += 1;
+            } else {
+                stable_count = 0;
+                last_gr_db = current_gr_db;
+            }
+
+            if stable_count >= 5 {
+                println!(
+                    "STABLE : gRdB={} après environ {} ms",
+                    current_gr_db,
+                    stable_count * 20
+                );
+                break;
+            }
+        }
+
+        let mut params_after: *mut SdrplayDeviceParams =
+            std::ptr::null_mut();
+
+        let result =
+            sdrplay_api_GetDeviceParams(device.dev, &mut params_after);
+
+        if result != 0 {
+            return Err(anyhow!(
+                "GetDeviceParams() après Update a échoué : {}",
+                result
+            ));
+        }
+
+        if params_after.is_null()
+            || (*params_after).rx_channel_a.is_null()
+        {
+            return Err(anyhow!(
+                "rxChannelA après Update est NULL"
+            ));
+        }
+
+        let rx_after = &*(*params_after).rx_channel_a;
+
+        println!(
+            "GR TEST : demandé={} réel_gRdB={} LNA={} curr={:.2} max={:.2} min={:.2}",
+            gr_db,
+            rx_after.tuner_params.gain.gr_db,
+            rx_after.tuner_params.gain.lna_state,
+            rx_after.tuner_params.gain.gain_vals.curr,
+            rx_after.tuner_params.gain.gain_vals.max,
+            rx_after.tuner_params.gain.gain_vals.min
+        );
+    }
+
+    Ok(())
+}
+    pub fn set_lna_state(&mut self, lna_state: u8) -> Result<()> {
         if !self.connected {
             return Err(anyhow!("SDRplay non connecté"));
         }
@@ -1048,17 +1571,6 @@ impl SdrplayBackend {
             return Err(anyhow!("RSP1B non initialisé"));
         }
 
-        if !gain_db.is_finite() {
-            return Err(anyhow!("Gain invalide : {} dB", gain_db));
-        }
-
-        if gain_db < 0.0 || gain_db > 59.0 {
-            return Err(anyhow!(
-                "Gain hors plage : {:.1} dB (plage Core actuelle : 0..59 dB)",
-                gain_db
-            ));
-        }
-
         let device = self
             .selected_device
             .ok_or_else(|| anyhow!("Périphérique SDRplay absent"))?;
@@ -1066,52 +1578,119 @@ impl SdrplayBackend {
         unsafe {
             let mut params: *mut SdrplayDeviceParams = std::ptr::null_mut();
 
-            let result = sdrplay_api_GetDeviceParams(device.dev, &mut params);
+            let result =
+                sdrplay_api_GetDeviceParams(device.dev, &mut params);
 
             if result != 0 {
-                return Err(anyhow!("GetDeviceParams() a échoué : {}", result));
+                return Err(anyhow!(
+                    "GetDeviceParams() a échoué : {}",
+                    result
+                ));
             }
 
             if params.is_null() {
-                return Err(anyhow!("GetDeviceParams() retourne NULL"));
+                return Err(anyhow!(
+                    "GetDeviceParams() retourne NULL"
+                ));
             }
 
             if (*params).rx_channel_a.is_null() {
-                return Err(anyhow!("rxChannelA est NULL"));
+                return Err(anyhow!(
+                    "rxChannelA est NULL"
+                ));
             }
 
             let rx = &mut *(*params).rx_channel_a;
 
-            /*
-             * SDRplay appelle cette valeur "gRdB" :
-             * gain reduction en dB.
-             *
-             * Pour cette première étape, la valeur du
-             * Core est appliquée directement à gRdB.
-             * Le réglage LNA sera traité séparément dans
-             * l'étape de gestion complète du gain.
-             */
-            rx.tuner_params.gain.gr_db = gain_db.round() as c_int;
+            println!(
+                "LNA AVANT : lna_state={} gr_db={} sync_update={}",
+                rx.tuner_params.gain.lna_state,
+                rx.tuner_params.gain.gr_db,
+                rx.tuner_params.gain.sync_update
+            );
+
+            rx.tuner_params.gain.lna_state = lna_state;
+
+            println!(
+                "LNA DEMANDE : lna_state={} gr_db={}",
+                rx.tuner_params.gain.lna_state,
+                rx.tuner_params.gain.gr_db
+            );
 
             const UPDATE_TUNER_GR: c_int = 0x00008000;
-
             const TUNER_A: c_int = 1;
             const EXT1_NONE: c_int = 0;
 
-            let result = sdrplay_api_Update(device.dev, TUNER_A, UPDATE_TUNER_GR, EXT1_NONE);
+            let result =
+                sdrplay_api_Update(
+                    device.dev,
+                    TUNER_A,
+                    UPDATE_TUNER_GR,
+                    EXT1_NONE,
+                );
+
+            println!("LNA UPDATE result={}", result);
 
             if result != 0 {
-                return Err(anyhow!("sdrplay_api_Update(GR) a échoué : {}", result));
+                return Err(anyhow!(
+                    "sdrplay_api_Update(LNA) a échoué : {}",
+                    result
+                ));
             }
 
+            /*
+             * Relire les paramètres après Update pour vérifier
+             * ce que l'API SDRplay a réellement conservé.
+             */
+            let mut params_after: *mut SdrplayDeviceParams =
+                std::ptr::null_mut();
+
+            let result =
+                sdrplay_api_GetDeviceParams(
+                    device.dev,
+                    &mut params_after,
+                );
+
+            if result != 0 {
+                return Err(anyhow!(
+                    "GetDeviceParams() après Update a échoué : {}",
+                    result
+                ));
+            }
+
+            if params_after.is_null() {
+                return Err(anyhow!(
+                    "GetDeviceParams() après Update retourne NULL"
+                ));
+            }
+
+            if (*params_after).rx_channel_a.is_null() {
+                return Err(anyhow!(
+                    "rxChannelA après Update est NULL"
+                ));
+            }
+
+            let rx_after = &*(*params_after).rx_channel_a;
+
             println!(
-                "Gain reduction RSP1B réglé à {} dB",
-                gain_db.round() as c_int
+                "LNA APRÈS : lna_state={} gr_db={} sync_update={} curr={} max={} min={}",
+                rx_after.tuner_params.gain.lna_state,
+                rx_after.tuner_params.gain.gr_db,
+                rx_after.tuner_params.gain.sync_update,
+                rx_after.tuner_params.gain.gain_vals.curr,
+                rx_after.tuner_params.gain.gain_vals.max,
+                rx_after.tuner_params.gain.gain_vals.min
+            );
+
+            println!(
+                "État LNA RSP1B demandé : {}",
+                lna_state
             );
         }
 
         Ok(())
     }
+
     pub fn set_agc(&mut self, enabled: bool) -> Result<()> {
 
         if !self.connected {
