@@ -160,6 +160,7 @@ match receiver.handle_command(
 )? {
     CommandResult::Event(event) => {
         println!("Événement Core : {:?}", event);
+        sdrplay.apply_event(&event)?;
     }
     other => {
         println!("Résultat Core : {:?}", other);
