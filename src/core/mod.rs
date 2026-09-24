@@ -4,6 +4,8 @@ pub mod event;
 pub mod iq;
 pub mod receiver;
 pub mod state;
+pub mod processor;
+pub use processor::IqProcessor;
 
 pub use capabilities::{Capabilities, IfType, LoMode};
 
@@ -11,7 +13,7 @@ pub use command::Command;
 
 pub use event::Event;
 
-pub use iq::{IqBlock, IqReblocker, IqSample, IQ_BLOCK_SIZE};
+pub use iq::{IqBlock, IqDistributor, IqMonitorSink, IqReblocker, IqSample, IQ_BLOCK_SIZE};
 
 pub use receiver::{CommandResult, Receiver};
 

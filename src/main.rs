@@ -6,6 +6,7 @@ use anyhow::Result;
 use backend::sdrplay::SdrplayBackend;
 use core::{
     Capabilities,
+    IqMonitorSink,
     Command,
     CommandResult,
 	 Event,
@@ -52,17 +53,20 @@ println!(">>> TEST START IQ");
         .expect("Receiver IQ indisponible");
 
     std::thread::spawn(move || {
+        let mut processor = core::IqProcessor::new();
+        let monitor = IqMonitorSink::new();
+
+        processor.distributor_mut().add_sink(Box::new(monitor));
+
         while let Ok(block) = iq_rx.recv() {
-            println!(
-                "<<< IQ CORE RX : sequence={} samples={} freq={} rate={}",
-                block.sequence,
-                block.samples.len(),
-                block.center_frequency_hz,
-                block.sample_rate
-            );
+            processor.process(block);
         }
 
-        println!("<<< IQ CORE RX arrêté");
+        println!(
+            "<<< CORE IQ arrêté : blocs={} samples={}",
+            processor.blocks_processed(),
+            processor.samples_processed()
+        );
     });
 
     sdrplay.connect()?;
