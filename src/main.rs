@@ -136,15 +136,6 @@ println!(">>> TEST LO = Auto");
 match receiver.handle_command(Command::SetLoMode(LoMode::Auto))? {
     CommandResult::Event(event) => {
         println!("Événement Core : {:?}", event);
-    }
-    other => {
-        println!("Résultat Core : {:?}", other);
-    }
-}
-
-match receiver.handle_command(Command::SetLoMode(LoMode::Auto))? {
-    CommandResult::Event(event) => {
-        println!("Événement Core : {:?}", event);
         sdrplay.apply_event(&event)?;
     }
     other => {
