@@ -121,6 +121,7 @@ for if_type in [
     match receiver.handle_command(Command::SetIfType(if_type))? {
         CommandResult::Event(event) => {
             println!("Événement Core : {:?}", event);
+            sdrplay.apply_event(&event)?;
         }
         other => {
             println!("Résultat Core : {:?}", other);
