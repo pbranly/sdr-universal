@@ -71,7 +71,7 @@ println!(">>> TEST START IQ");
     println!("SDRplay connecté.");
 
     println!();
-    println!("--- SetFrequency(145000000) ---");
+    println!("--- SetFrequency({}) ---", receiver.state().frequency_hz);
 
 
 
