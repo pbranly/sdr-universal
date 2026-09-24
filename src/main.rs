@@ -100,15 +100,24 @@ match receiver.handle_command(
         println!("Résultat Core : {:?}", other);
     }
 }
+println!(">>> TEST BANDWIDTH");
 
+match receiver.handle_command(
+    Command::SetBandwidth(receiver.state().bandwidth_hz)
+)? {
+    CommandResult::Event(event) => {
+        println!("Événement Core : {:?}", event);
+        sdrplay.apply_event(&event)?;
+    }
+    other => {
+        println!("Résultat Core : {:?}", other);
+    }
+}
 // Le sample rate est déjà appliqué par apply_event().
 
 
-println!(">>> AVANT set_bandwidth()");
 
-// La bande passante est appliquée par apply_event().
 
-println!(">>> APRES set_bandwidth()");
 
 for if_type in [
     IfType::Zero,
