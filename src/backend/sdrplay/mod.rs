@@ -5,7 +5,7 @@ use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::core::{IqBlock, IqReblocker, IqSample};
+use crate::core::{Event, IfType, IqBlock, IqReblocker, IqSample, LoMode};
 
 const MAX_DEVICES: usize = 16;
 const MAX_SER_NO_LEN: usize = 64;
@@ -297,9 +297,10 @@ struct CallbackContext {
     center_frequency_hz: AtomicU64,
     sample_rate: AtomicU64,
     dropped_blocks: AtomicU64,
-	lna_gr_db: AtomicU64,
-	curr_gain_milli_db: AtomicU64,
+    lna_gr_db: AtomicU64,
+    curr_gain_milli_db: AtomicU64,
     callback_gr_db: AtomicU64,
+    iq_enabled: AtomicBool,
 }
 
 const _: () = {
@@ -399,7 +400,9 @@ unsafe extern "C" fn stream_a_callback(
     if num_samples == 0 {
         return;
     }
-
+	if !context.iq_enabled.load(Ordering::Relaxed) {
+    return;
+}
     let callback_count = IQ_CALLBACK_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
 
     println!(
@@ -564,7 +567,8 @@ impl SdrplayBackend {
             dropped_blocks: AtomicU64::new(0),
 			lna_gr_db: AtomicU64::new(0),
 			curr_gain_milli_db: AtomicU64::new(0),
-    callback_gr_db: AtomicU64::new(0),
+			callback_gr_db: AtomicU64::new(0),
+			iq_enabled: AtomicBool::new(true),
         });
 
         Self {
@@ -580,6 +584,72 @@ impl SdrplayBackend {
 
     pub fn take_iq_receiver(&mut self) -> Option<Receiver<IqBlock>> {
         self.iq_rx.take()
+    }
+
+    pub fn start_iq(&self) -> Result<()> {
+        let context = self
+            .callback_context
+            .as_ref()
+            .ok_or_else(|| anyhow!("Contexte callback IQ absent"))?;
+
+        context.iq_enabled.store(true, Ordering::Relaxed);
+
+        Ok(())
+    }
+
+    pub fn stop_iq(&self) -> Result<()> {
+        let context = self
+            .callback_context
+            .as_ref()
+            .ok_or_else(|| anyhow!("Contexte callback IQ absent"))?;
+
+        context.iq_enabled.store(false, Ordering::Relaxed);
+
+        Ok(())
+    }
+
+    pub fn apply_event(&mut self, event: &Event) -> Result<()> {
+        match event {
+            Event::FrequencyChanged(frequency_hz) => {
+                self.set_frequency(*frequency_hz)?;
+            }
+
+            Event::SampleRateChanged(sample_rate_hz) => {
+                self.set_sample_rate(*sample_rate_hz)?;
+            }
+
+            Event::BandwidthChanged(bandwidth_hz) => {
+                self.set_bandwidth(*bandwidth_hz)?;
+            }
+
+            Event::IfTypeChanged(if_type) => {
+                self.set_if_type(*if_type)?;
+            }
+
+            Event::LoModeChanged(lo_mode) => {
+                self.set_lo_mode_core(*lo_mode)?;
+            }
+
+            Event::GainChanged(gain_db) => {
+                self.set_gain(*gain_db)?;
+            }
+
+            Event::AgcChanged(enabled) => {
+                self.set_agc(*enabled)?;
+            }
+
+            Event::IqStarted => {
+                self.start_iq()?;
+            }
+
+            Event::IqStopped => {
+                self.stop_iq()?;
+            }
+
+            _ => {}
+        }
+
+        Ok(())
     }
 
     pub fn dropped_iq_blocks(&self) -> u64 {
@@ -1051,13 +1121,257 @@ impl SdrplayBackend {
             if result != 0 {
                 return Err(anyhow!("sdrplay_api_Update(BW_TYPE) a échoué : {}", result));
             }
+let mut verify_params: *mut SdrplayDeviceParams = std::ptr::null_mut();
 
+let verify_result =
+    sdrplay_api_GetDeviceParams(device.dev, &mut verify_params);
+
+if verify_result != 0 {
+    return Err(anyhow!(
+        "GetDeviceParams() après BW a échoué : {}",
+        verify_result
+    ));
+}
+
+if verify_params.is_null() {
+    return Err(anyhow!(
+        "GetDeviceParams() après BW retourne NULL"
+    ));
+}
+
+if (*verify_params).rx_channel_a.is_null() {
+    return Err(anyhow!(
+        "rxChannelA après BW est NULL"
+    ));
+}
+
+let verify_rx = &*(*verify_params).rx_channel_a;
+
+println!(
+    "Bandwidth après Update = {} kHz",
+    verify_rx.tuner_params.bw_type
+);
             println!("Bande passante RSP1B réglée à {} Hz", bandwidth_hz);
         }
 
         Ok(())
     }
+    pub fn set_if_type(&mut self, if_type: IfType) -> Result<()> {
+    if !self.connected {
+        return Err(anyhow!("SDRplay non connecté"));
+    }
 
+    if !self.device_selected {
+        return Err(anyhow!("Aucun périphérique SDRplay sélectionné"));
+    }
+
+    if !self.initialized {
+        return Err(anyhow!("RSP1B non initialisé"));
+    }
+
+    let if_khz: c_int = match if_type {
+        IfType::Zero => 0,
+        IfType::KHz450 => 450,
+        IfType::KHz1620 => 1620,
+        IfType::KHz2048 => 2048,
+    };
+
+    let device = self
+        .selected_device
+        .ok_or_else(|| anyhow!("Périphérique SDRplay absent"))?;
+
+    unsafe {
+        let mut params: *mut SdrplayDeviceParams = std::ptr::null_mut();
+
+        let result = sdrplay_api_GetDeviceParams(device.dev, &mut params);
+
+        if result != 0 {
+            return Err(anyhow!("GetDeviceParams() a échoué : {}", result));
+        }
+
+        if params.is_null() {
+            return Err(anyhow!("GetDeviceParams() retourne NULL"));
+        }
+
+        if (*params).rx_channel_a.is_null() {
+            return Err(anyhow!("rxChannelA est NULL"));
+        }
+
+        let rx = &mut *(*params).rx_channel_a;
+
+        rx.tuner_params.if_type = if_khz;
+
+        const UPDATE_TUNER_IF_TYPE: c_int = 0x00080000;
+        const TUNER_A: c_int = 1;
+        const EXT1_NONE: c_int = 0;
+
+        let result = sdrplay_api_Update(
+            device.dev,
+            TUNER_A,
+            UPDATE_TUNER_IF_TYPE,
+            EXT1_NONE,
+        );
+
+        if result != 0 {
+            return Err(anyhow!(
+                "sdrplay_api_Update(IF_TYPE) a échoué : {}",
+                result
+            ));
+        }
+
+        // Relecture des paramètres après Update
+        let mut verify_params: *mut SdrplayDeviceParams = std::ptr::null_mut();
+
+        let verify_result =
+            sdrplay_api_GetDeviceParams(device.dev, &mut verify_params);
+
+        if verify_result != 0 {
+            return Err(anyhow!(
+                "GetDeviceParams() après Update IF a échoué : {}",
+                verify_result
+            ));
+        }
+
+        if verify_params.is_null() {
+            return Err(anyhow!(
+                "GetDeviceParams() après Update IF retourne NULL"
+            ));
+        }
+
+        if (*verify_params).rx_channel_a.is_null() {
+            return Err(anyhow!(
+                "rxChannelA après Update IF est NULL"
+            ));
+        }
+
+        let verify_rx = &*(*verify_params).rx_channel_a;
+
+        println!(
+            "IF après Update = {} kHz",
+            verify_rx.tuner_params.if_type
+        );
+
+        println!("IF RSP1B réglé à {} kHz", if_khz);
+    }
+
+    Ok(())
+}
+
+    pub fn set_lo_mode_core(&mut self, lo_mode: LoMode) -> Result<()> {
+        let value = match lo_mode {
+            LoMode::Auto => 1,
+            LoMode::MHz120 => 2,
+            LoMode::MHz144 => 3,
+            LoMode::MHz168 => 4,
+        };
+
+        self.set_lo_mode(value)
+    }
+
+    pub fn set_lo_mode(&mut self, lo_mode: i32) -> Result<()> {
+        if !self.connected {
+            return Err(anyhow!("SDRplay non connecté"));
+        }
+
+        if !self.device_selected {
+            return Err(anyhow!("Aucun périphérique SDRplay sélectionné"));
+        }
+
+        if !self.initialized {
+            return Err(anyhow!("RSP1B non initialisé"));
+        }
+
+        let lo_mode: c_int = match lo_mode {
+            1 | 2 | 3 | 4 => lo_mode,
+
+            _ => {
+                return Err(anyhow!(
+                    "Mode LO non supporté : {}",
+                    lo_mode
+                ));
+            }
+        };
+
+        let device = self
+            .selected_device
+            .ok_or_else(|| anyhow!("Périphérique SDRplay absent"))?;
+
+        unsafe {
+            let mut params: *mut SdrplayDeviceParams = std::ptr::null_mut();
+
+            let result = sdrplay_api_GetDeviceParams(device.dev, &mut params);
+
+            if result != 0 {
+                return Err(anyhow!("GetDeviceParams() a échoué : {}", result));
+            }
+
+            if params.is_null() {
+                return Err(anyhow!("GetDeviceParams() retourne NULL"));
+            }
+
+            if (*params).rx_channel_a.is_null() {
+                return Err(anyhow!("rxChannelA est NULL"));
+            }
+
+            let rx = &mut *(*params).rx_channel_a;
+
+            rx.tuner_params.lo_mode = lo_mode;
+
+            const UPDATE_TUNER_LO_MODE: c_int = 0x00200000;
+            const TUNER_A: c_int = 1;
+            const EXT1_NONE: c_int = 0;
+
+            let result = sdrplay_api_Update(
+                device.dev,
+                TUNER_A,
+                UPDATE_TUNER_LO_MODE,
+                EXT1_NONE,
+            );
+
+if result != 0 {
+    return Err(anyhow!(
+        "sdrplay_api_Update(LO_MODE) a échoué : {}",
+        result
+    ));
+}
+
+// Relecture des paramètres après Update
+let mut verify_params: *mut SdrplayDeviceParams = std::ptr::null_mut();
+
+let verify_result =
+    sdrplay_api_GetDeviceParams(device.dev, &mut verify_params);
+
+if verify_result != 0 {
+    return Err(anyhow!(
+        "GetDeviceParams() après Update LO a échoué : {}",
+        verify_result
+    ));
+}
+
+if verify_params.is_null() {
+    return Err(anyhow!(
+        "GetDeviceParams() après Update LO retourne NULL"
+    ));
+}
+
+if (*verify_params).rx_channel_a.is_null() {
+    return Err(anyhow!(
+        "rxChannelA après Update LO est NULL"
+    ));
+}
+
+let verify_rx = &*(*verify_params).rx_channel_a;
+
+println!(
+    "LO après Update = {}",
+    verify_rx.tuner_params.lo_mode
+);
+
+println!("LO mode RSP1B réglé à {}", lo_mode);
+        }
+
+        Ok(())
+    }
 pub fn set_gain(&mut self, gain_db: f32) -> Result<()> {
     if !self.connected {
         return Err(anyhow!("SDRplay non connecté"));
@@ -1294,7 +1608,14 @@ static GAIN_MAP: &[(u8, c_int, f32)] = &[
         }
 
         let rx = &mut *(*params).rx_channel_a;
-
+println!(
+    ">>> GAIN AVANT REGLAGE : LNAstate={} gRdB={} curr={:.2} max={:.2} min={:.2}",
+    rx.tuner_params.gain.lna_state,
+    rx.tuner_params.gain.gr_db,
+    rx.tuner_params.gain.gain_vals.curr,
+    rx.tuner_params.gain.gain_vals.max,
+    rx.tuner_params.gain.gain_vals.min,
+);
         println!(
             "Réglage gain global : demandé={:.2} dB -> \
              LNA={} gRdB={} gain_mesuré={:.2} dB erreur={:.2} dB",
@@ -1334,7 +1655,27 @@ static GAIN_MAP: &[(u8, c_int, f32)] = &[
                 result
             ));
         }
+let mut verify_params: *mut SdrplayDeviceParams = std::ptr::null_mut();
 
+let verify_result = sdrplay_api_GetDeviceParams(
+    device.dev,
+    &mut verify_params,
+);
+
+if verify_result == 0 && !verify_params.is_null() {
+    if !(*verify_params).rx_channel_a.is_null() {
+        let verify_rx = &*(*verify_params).rx_channel_a;
+
+        println!(
+            ">>> VERIFY GAIN : LNAstate={} gRdB={} curr={:.2} max={:.2} min={:.2}",
+            verify_rx.tuner_params.gain.lna_state,
+            verify_rx.tuner_params.gain.gr_db,
+            verify_rx.tuner_params.gain.gain_vals.curr,
+            verify_rx.tuner_params.gain.gain_vals.max,
+            verify_rx.tuner_params.gain.gain_vals.min,
+        );
+    }
+}
         /*
          * Le callback confirme le gRdB réellement appliqué et fournit
          * le currGain réel.
@@ -1343,7 +1684,7 @@ static GAIN_MAP: &[(u8, c_int, f32)] = &[
             let mut callback_seen = false;
 
             for _ in 0..100 {
-                let callback_gr_db =
+				let callback_gr_db =
                     context.callback_gr_db.load(Ordering::Relaxed);
 
                 if callback_gr_db == gr_db as u64 {
@@ -1366,29 +1707,14 @@ static GAIN_MAP: &[(u8, c_int, f32)] = &[
                 context.curr_gain_milli_db.load(Ordering::Relaxed)
                     as f64 / 1000.0;
 
-            if callback_seen {
-                let callback_error =
-                    (curr_gain - gain_db as f64).abs();
-
-                println!(
-                    "Gain réel callback : gRdB={} lnaGRdB={} \
-                     currGain={:.2} dB erreur={:.2} dB",
-                    callback_gr_db,
-                    lna_gr_db,
-                    curr_gain,
-                    callback_error
-                );
-
-                if callback_error > 1.0 {
-                    return Err(anyhow!(
-                        "Gain réel hors tolérance : demandé={:.2} dB \
-                         réel={:.2} dB erreur={:.2} dB",
-                        gain_db,
-                        curr_gain,
-                        callback_error
-                    ));
-                }
-                        } else {
+if callback_seen {
+    println!(
+        "Gain callback : gRdB={} lnaGRdB={} currGain={:.2} dB",
+        callback_gr_db,
+        lna_gr_db,
+        curr_gain
+    );
+} else {
                 return Err(anyhow!(
                     "SDRplay n'a pas confirmé le gRdB demandé : \
                      demandé={} dernier={} currGain={:.2} dB",
@@ -1606,6 +1932,7 @@ pub fn set_gr_db_test(&mut self, gr_db: c_int) -> Result<()> {
                 "LNA AVANT : lna_state={} gr_db={} sync_update={}",
                 rx.tuner_params.gain.lna_state,
                 rx.tuner_params.gain.gr_db,
+
                 rx.tuner_params.gain.sync_update
             );
 

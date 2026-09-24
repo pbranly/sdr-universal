@@ -4,17 +4,7 @@ mod core;
 use anyhow::Result;
 
 use backend::sdrplay::SdrplayBackend;
-use core::{
-    Capabilities,
-    Command,
-    CommandResult,
-	 Event,
-    IfType,
-    LoMode,
-    Receiver,
-    ReceiverMode,
-    ReceiverState,
-};
+use core::{Capabilities, Command, CommandResult, Receiver, ReceiverMode, ReceiverState};
 
 fn main() -> Result<()> {
     println!("=================================");
@@ -35,10 +25,6 @@ fn main() -> Result<()> {
     let capabilities = Capabilities::default();
 
     let mut receiver = Receiver::new(state, capabilities);
-
-println!(">>> TEST START IQ");
-
-
 
     println!("Connexion au SDRplay...");
 
@@ -73,51 +59,7 @@ println!(">>> TEST START IQ");
     println!();
     println!("--- SetFrequency(145000000) ---");
 
-
-
-    match receiver.handle_command(
-    Command::SetFrequency(receiver.state().frequency_hz)
-)? {
-    CommandResult::Event(event) => {
-        println!("Événement Core : {:?}", event);
-        sdrplay.apply_event(&event)?;
-    }
-    other => {
-        println!("Résultat Core : {:?}", other);
-    }
-}
-
-println!(">>> TEST SAMPLE RATE");
-
-match receiver.handle_command(
-    Command::SetSampleRate(receiver.state().sample_rate)
-)? {
-    CommandResult::Event(event) => {
-        println!("Événement Core : {:?}", event);
-    }
-    other => {
-        println!("Résultat Core : {:?}", other);
-    }
-}
-
-// Le sample rate est déjà appliqué par apply_event().
-
-
-println!(">>> AVANT set_bandwidth()");
-
-// La bande passante est appliquée par apply_event().
-
-println!(">>> APRES set_bandwidth()");
-
-for if_type in [
-    IfType::Zero,
-    IfType::KHz450,
-    IfType::KHz1620,
-    IfType::KHz2048,
-] {
-    println!(">>> TEST IF = {:?}", if_type);
-
-    match receiver.handle_command(Command::SetIfType(if_type))? {
+    match receiver.handle_command(Command::SetFrequency(145_000_000))? {
         CommandResult::Event(event) => {
             println!("Événement Core : {:?}", event);
         }
@@ -126,60 +68,36 @@ for if_type in [
         }
     }
 
-    // L'IF est appliquée par apply_event().
-}
+    sdrplay.set_frequency(receiver.state().frequency_hz)?;
 
-println!(">>> TEST LO = Auto");
+    sdrplay.set_sample_rate(receiver.state().sample_rate)?;
 
-match receiver.handle_command(Command::SetLoMode(LoMode::Auto))? {
-    CommandResult::Event(event) => {
-        println!("Événement Core : {:?}", event);
-    }
-    other => {
-        println!("Résultat Core : {:?}", other);
-    }
-}
+    println!(">>> AVANT set_bandwidth()");
 
-match receiver.handle_command(Command::SetLoMode(LoMode::Auto))? {
-    CommandResult::Event(event) => {
-        println!("Événement Core : {:?}", event);
-        sdrplay.apply_event(&event)?;
-    }
-    other => {
-        println!("Résultat Core : {:?}", other);
-    }
-}
-println!(">>> Désactivation AGC AVANT TEST GAIN");
-match receiver.handle_command(Command::SetAgc(false))? {
-    CommandResult::Event(event) => {
-        println!("Événement Core : {:?}", event);
-        sdrplay.apply_event(&event)?;
-    }
-    other => {
-        println!("Résultat Core : {:?}", other);
-    }
-}
+    sdrplay.set_bandwidth(receiver.state().bandwidth_hz)?;
+
+    println!(">>> APRES set_bandwidth()");
+
 println!(">>> Réglage du gain à {} dB", receiver.state().gain);
-println!(">>> TEST CORE GAIN");
 
-match receiver.handle_command(
-    Command::SetGain(receiver.state().gain)
-)? {
-    CommandResult::Event(event) => {
-        println!("Événement Core : {:?}", event);
-    }
-    other => {
-        println!("Résultat Core : {:?}", other);
-    }
-}
+sdrplay.set_gain(receiver.state().gain)?;
 
-// Le gain est appliqué par apply_event().
 
     std::thread::sleep(std::time::Duration::from_millis(300));
 
+    for gr_db in (0..=59).rev() {
+        println!(">>> AVANT GR TEST {}", gr_db);
+
+        sdrplay.set_gr_db_test(gr_db)?;
+
+        println!(">>> APRES GR TEST {}", gr_db);
+
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
 
 
-
+println!(">>> Désactivation de l'AGC");
+sdrplay.set_agc(false)?;
 
 println!();
 println!("=================================");

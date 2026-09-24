@@ -5,7 +5,7 @@ pub mod iq;
 pub mod receiver;
 pub mod state;
 
-pub use capabilities::Capabilities;
+pub use capabilities::{Capabilities, IfType, LoMode};
 
 pub use command::Command;
 

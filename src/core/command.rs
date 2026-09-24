@@ -1,4 +1,5 @@
-use super::ReceiverMode;
+
+use super::{IfType, LoMode, ReceiverMode};
 
 #[derive(Debug, Clone)]
 pub enum Command {
@@ -8,6 +9,8 @@ pub enum Command {
     SetFrequency(u64),
     SetMode(ReceiverMode),
     SetBandwidth(u32),
+    SetIfType(IfType),
+    SetLoMode(LoMode),
     SetSampleRate(u32),
 
     SetGain(f32),
@@ -24,3 +27,5 @@ pub enum Command {
     StartIq,
     StopIq,
 }
+
+

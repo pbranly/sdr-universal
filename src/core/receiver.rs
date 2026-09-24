@@ -35,7 +35,9 @@ impl Receiver {
         match command {
             Command::GetState => Ok(CommandResult::State(self.state.clone())),
 
-            Command::GetCapabilities => Ok(CommandResult::Capabilities(self.capabilities.clone())),
+            Command::GetCapabilities => {
+                Ok(CommandResult::Capabilities(self.capabilities.clone()))
+            }
 
             Command::SetFrequency(frequency_hz) => {
                 if frequency_hz < self.capabilities.frequency_min_hz
@@ -51,7 +53,9 @@ impl Receiver {
 
                 self.state.frequency_hz = frequency_hz;
 
-                Ok(CommandResult::Event(Event::FrequencyChanged(frequency_hz)))
+                Ok(CommandResult::Event(
+                    Event::FrequencyChanged(frequency_hz),
+                ))
             }
 
             Command::SetMode(mode) => {
@@ -74,21 +78,57 @@ impl Receiver {
 
                 self.state.bandwidth_hz = bandwidth_hz;
 
-                Ok(CommandResult::Event(Event::BandwidthChanged(bandwidth_hz)))
+                Ok(CommandResult::Event(
+                    Event::BandwidthChanged(bandwidth_hz),
+                ))
+            }
+
+            Command::SetIfType(if_type) => {
+                if !self.capabilities.if_types.contains(&if_type) {
+                    return Err(anyhow!(
+                        "Type IF non supporté : {:?}",
+                        if_type
+                    ));
+                }
+
+                Ok(CommandResult::Event(
+                    Event::IfTypeChanged(if_type),
+                ))
+            }
+
+            Command::SetLoMode(lo_mode) => {
+			println!(">>> CORE SetLoMode reçu : {:?}", lo_mode);
+                if !self.capabilities.lo_modes.contains(&lo_mode) {
+                    return Err(anyhow!(
+                        "Mode LO non supporté : {:?}",
+                        lo_mode
+                    ));
+                }
+
+                Ok(CommandResult::Event(
+                    Event::LoModeChanged(lo_mode),
+                ))
             }
 
             Command::SetSampleRate(sample_rate) => {
                 if !self.capabilities.sample_rates.contains(&sample_rate) {
-                    return Err(anyhow!("Sample rate non supporté : {} Hz", sample_rate));
+                    return Err(anyhow!(
+                        "Sample rate non supporté : {} Hz",
+                        sample_rate
+                    ));
                 }
 
                 self.state.sample_rate = sample_rate;
 
-                Ok(CommandResult::Event(Event::SampleRateChanged(sample_rate)))
+                Ok(CommandResult::Event(
+                    Event::SampleRateChanged(sample_rate),
+                ))
             }
 
             Command::SetGain(gain) => {
-                if gain < self.capabilities.gain_min_db || gain > self.capabilities.gain_max_db {
+                if gain < self.capabilities.gain_min_db
+                    || gain > self.capabilities.gain_max_db
+                {
                     return Err(anyhow!(
                         "Gain hors limites : {:.2} dB ({:.2} - {:.2} dB)",
                         gain,
@@ -116,12 +156,17 @@ impl Receiver {
 
             Command::SetAntenna(antenna) => {
                 if !self.capabilities.antennas.contains(&antenna) {
-                    return Err(anyhow!("Antenne non supportée : {}", antenna));
+                    return Err(anyhow!(
+                        "Antenne non supportée : {}",
+                        antenna
+                    ));
                 }
 
                 self.state.antenna = Some(antenna.clone());
 
-                Ok(CommandResult::Event(Event::AntennaChanged(antenna)))
+                Ok(CommandResult::Event(
+                    Event::AntennaChanged(antenna),
+                ))
             }
 
             Command::SetPpm(ppm) => {
@@ -139,7 +184,9 @@ impl Receiver {
 
                 self.state.bias_tee = enabled;
 
-                Ok(CommandResult::Event(Event::BiasTeeChanged(enabled)))
+                Ok(CommandResult::Event(
+                    Event::BiasTeeChanged(enabled),
+                ))
             }
 
             Command::SetRfNotch(enabled) => {
@@ -151,7 +198,9 @@ impl Receiver {
 
                 self.state.rf_notch = enabled;
 
-                Ok(CommandResult::Event(Event::RfNotchChanged(enabled)))
+                Ok(CommandResult::Event(
+                    Event::RfNotchChanged(enabled),
+                ))
             }
 
             Command::SetDabNotch(enabled) => {
@@ -163,12 +212,16 @@ impl Receiver {
 
                 self.state.dab_notch = enabled;
 
-                Ok(CommandResult::Event(Event::DabNotchChanged(enabled)))
+                Ok(CommandResult::Event(
+                    Event::DabNotchChanged(enabled),
+                ))
             }
 
             Command::StartIq => {
                 if !self.capabilities.iq {
-                    return Err(anyhow!("Le flux IQ n'est pas supporté par ce périphérique"));
+                    return Err(anyhow!(
+                        "Le flux IQ n'est pas supporté par ce périphérique"
+                    ));
                 }
 
                 if self.state.streaming {
