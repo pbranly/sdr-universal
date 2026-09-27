@@ -107,107 +107,57 @@ println!(">>> TEST START IQ");
 
     println!();
     println!("--- SetFrequency({}) ---", receiver.state().frequency_hz);
+    let frequency_hz = receiver.state().frequency_hz;
+    execute_command(
+        &mut receiver,
+        &mut sdrplay,
+        Command::SetFrequency(frequency_hz),
+    )?;
 
+    println!(">>> TEST SAMPLE RATE");
+    execute_command(
+        &mut receiver,
+        &mut sdrplay,
+        Command::SetSampleRate(2_000_000),
+    )?;
 
+    println!(">>> TEST BANDWIDTH");
+    let bandwidth_hz = receiver.state().bandwidth_hz;
+    execute_command(
+        &mut receiver,
+        &mut sdrplay,
+        Command::SetBandwidth(bandwidth_hz),
+    )?;
 
-    match receiver.handle_command(
-    Command::SetFrequency(receiver.state().frequency_hz)
-)? {
-    CommandResult::Event(event) => {
-        println!("Événement Core : {:?}", event);
-        sdrplay.apply_event(&event)?;
-    }
-    other => {
-        println!("Résultat Core : {:?}", other);
-    }
-}
+    println!(">>> TEST IF = Zero");
+    execute_command(
+        &mut receiver,
+        &mut sdrplay,
+        Command::SetIfType(IfType::Zero),
+    )?;
 
-println!(">>> TEST SAMPLE RATE");
+    println!(">>> TEST LO = Auto");
+    execute_command(
+        &mut receiver,
+        &mut sdrplay,
+        Command::SetLoMode(LoMode::Auto),
+    )?;
 
-match receiver.handle_command(
-    Command::SetSampleRate(2_000_000)
-)? {
-    CommandResult::Event(event) => {
-        println!("Événement Core : {:?}", event);
-        sdrplay.apply_event(&event)?;
-    }
-    other => {
-        println!("Résultat Core : {:?}", other);
-    }
-}
-println!(">>> TEST BANDWIDTH");
+    println!(">>> Réglage du gain à {} dB", receiver.state().gain);
+    println!(">>> TEST CORE GAIN");
+    let gain = receiver.state().gain;
+    execute_command(
+        &mut receiver,
+        &mut sdrplay,
+        Command::SetGain(gain),
+    )?;
 
-match receiver.handle_command(
-    Command::SetBandwidth(receiver.state().bandwidth_hz)
-)? {
-    CommandResult::Event(event) => {
-        println!("Événement Core : {:?}", event);
-        sdrplay.apply_event(&event)?;
-    }
-    other => {
-        println!("Résultat Core : {:?}", other);
-    }
-}
-// Le sample rate est déjà appliqué par apply_event().
-
-
-
-
-
-println!(">>> TEST IF = Zero");
-
-match receiver.handle_command(Command::SetIfType(IfType::Zero))? {
-    CommandResult::Event(event) => {
-        println!("Événement Core : {:?}", event);
-        sdrplay.apply_event(&event)?;
-    }
-    other => {
-        println!("Résultat Core : {:?}", other);
-    }
-}
-
-println!(">>> TEST LO = Auto");
-
-match receiver.handle_command(Command::SetLoMode(LoMode::Auto))? {
-
-    CommandResult::Event(event) => {
-        println!("Événement Core : {:?}", event);
-        sdrplay.apply_event(&event)?;
-    }
-    other => {
-        println!("Résultat Core : {:?}", other);
-    }
-}
-println!(">>> Réglage du gain à {} dB", receiver.state().gain);
-println!(">>> TEST CORE GAIN");
-
-match receiver.handle_command(
-    Command::SetGain(receiver.state().gain)
-)? {
-    CommandResult::Event(event) => {
-        println!("Événement Core : {:?}", event);
-        sdrplay.apply_event(&event)?;
-    }
-    other => {
-        println!("Résultat Core : {:?}", other);
-    }
-}
-
-// Le gain est appliqué par apply_event().
-
-println!(">>> TEST START IQ APRÈS CONFIGURATION");
-
-
-match receiver.handle_command(Command::StartIq)? {
-    CommandResult::Event(event) => {
-        println!("Événement Core : {:?}", event);
-        sdrplay.apply_event(&event)?;
-    }
-    other => {
-        println!("Résultat Core : {:?}", other);
-    }
-}
-
+    println!(">>> TEST START IQ APRÈS CONFIGURATION");
+    execute_command(
+        &mut receiver,
+        &mut sdrplay,
+        Command::StartIq,
+    )?;
 
 std::thread::sleep(std::time::Duration::from_millis(300));
 
