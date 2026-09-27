@@ -1,18 +1,18 @@
-use super::{IfType, LoMode};
+use super::{GainMode, IfType, LoMode, ReceiverMode};
 
 #[derive(Debug, Clone)]
 pub enum Event {
     StateChanged,
 
     FrequencyChanged(u64),
-    ModeChanged,
+    ModeChanged(ReceiverMode),
     BandwidthChanged(u32),
     IfTypeChanged(IfType),
     LoModeChanged(LoMode),
     SampleRateChanged(u32),
 
     GainChanged(f32),
-    GainModeChanged,
+    GainModeChanged(GainMode),
     AgcChanged(bool),
 
     AntennaChanged(String),

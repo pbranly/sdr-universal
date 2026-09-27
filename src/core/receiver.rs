@@ -65,7 +65,7 @@ impl Receiver {
 
                 self.state.mode = mode;
 
-                Ok(CommandResult::Event(Event::ModeChanged))
+                Ok(CommandResult::Event(Event::ModeChanged(mode)))
             }
 
             Command::SetBandwidth(bandwidth_hz) => {
@@ -145,7 +145,7 @@ impl Receiver {
             Command::SetGainMode(gain_mode) => {
                 self.state.gain_mode = gain_mode;
 
-                Ok(CommandResult::Event(Event::GainModeChanged))
+                Ok(CommandResult::Event(Event::GainModeChanged(gain_mode)))
             }
 
             Command::SetAgc(agc) => {

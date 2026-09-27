@@ -1,3 +1,4 @@
+use super::{IfType, LoMode};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReceiverMode {
     Am,
@@ -15,6 +16,8 @@ pub struct ReceiverState {
     pub frequency_hz: u64,
     pub sample_rate: u32,
     pub bandwidth_hz: u32,
+	pub if_type: IfType,
+	pub lo_mode: LoMode,
 
     pub mode: ReceiverMode,
 
@@ -46,7 +49,10 @@ impl Default for ReceiverState {
             frequency_hz: 200_000_000,
             sample_rate: 2_000_000,
             bandwidth_hz: 200_000,
-
+			
+			if_type: IfType::Zero,
+			lo_mode: LoMode::Auto,
+			
             mode: ReceiverMode::Nfm,
 
             gain: 50.0,
