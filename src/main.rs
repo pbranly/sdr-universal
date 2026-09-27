@@ -20,6 +20,19 @@ use core::{
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+fn execute_command(receiver: &mut Receiver, backend: &mut SdrplayBackend, command: Command) -> Result<()> {
+    match receiver.handle_command(command)? {
+        CommandResult::Event(event) => {
+            backend.apply_event(&event)?;
+        }
+        other => {
+            println!("Résultat Core : {:?}", other);
+        }
+    }
+
+    Ok(())
+}
+
 fn main() -> Result<()> {
     println!("=================================");
     println!(" SDR Universal");
