@@ -91,6 +91,8 @@ impl Receiver {
                     ));
                 }
 
+                self.state.if_type = if_type;
+
                 Ok(CommandResult::Event(
                     Event::IfTypeChanged(if_type),
                 ))
@@ -104,6 +106,8 @@ impl Receiver {
                         lo_mode
                     ));
                 }
+
+                self.state.lo_mode = lo_mode;
 
                 Ok(CommandResult::Event(
                     Event::LoModeChanged(lo_mode),
