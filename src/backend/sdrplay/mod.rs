@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
+use crate::backend::Backend;
 
 use crate::core::{Event, IfType, IqBlock, IqReblocker, IqSample, LoMode};
 
@@ -2259,6 +2260,20 @@ pub fn is_connected(&self) -> bool {
     self.connected
 }
 
+}
+
+impl Backend for SdrplayBackend {
+    fn connect(&mut self) -> Result<()> {
+        SdrplayBackend::connect(self)
+    }
+
+    fn disconnect(&mut self) {
+        SdrplayBackend::disconnect(self)
+    }
+
+    fn apply_event(&mut self, event: &Event) -> Result<()> {
+        SdrplayBackend::apply_event(self, event)
+    }
 }
 
 impl Drop for SdrplayBackend {

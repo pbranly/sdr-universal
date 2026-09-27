@@ -4,6 +4,7 @@ mod output;
 
 use anyhow::Result;
 
+use backend::Backend;
 use backend::sdrplay::SdrplayBackend;
 use output::RtltcpSink;
 
@@ -20,7 +21,7 @@ use core::{
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-fn execute_command(receiver: &mut Receiver, backend: &mut SdrplayBackend, command: Command) -> Result<()> {
+fn execute_command(receiver: &mut Receiver, backend: &mut dyn Backend, command: Command) -> Result<()> {
     match receiver.handle_command(command)? {
         CommandResult::Event(event) => {
             backend.apply_event(&event)?;
@@ -100,7 +101,7 @@ println!(">>> TEST START IQ");
         );
     });
 
-    sdrplay.connect()?;
+    Backend::connect(&mut sdrplay)?;
 
     println!();
     println!("SDRplay connecté.");
@@ -200,22 +201,13 @@ println!("{:#?}", receiver.state());
                 if let Some(core_command) = command.to_core_command() {
                     println!(">>> Command Core : {:?}", core_command);
 
-                    match receiver.handle_command(core_command) {
-						Ok(CommandResult::Event(event)) => {
-							println!(">>> Événement Core RTL-TCP : {:?}", event);
-
-							println!(">>> APPLY EVENT SDRplay : {:?}", event);
-							if let Err(e) = sdrplay.apply_event(&event) {
-            println!(">>> Erreur SDRplay RTL-TCP : {}", e);
-        }
-    }
-    Ok(other) => {
-        println!(">>> Résultat Core RTL-TCP : {:?}", other);
-    }
-    Err(e) => {
-        println!(">>> Commande Core refusée : {}", e);
-    }
-}
+                    if let Err(e) = execute_command(
+                        &mut receiver,
+                        &mut sdrplay,
+                        core_command,
+                    ) {
+                        println!(">>> Erreur commande Core RTL-TCP : {}", e);
+                    }
                 }
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => {}
@@ -232,7 +224,7 @@ println!("{:#?}", receiver.state());
     println!("Fin du test IQ.");
 
     println!("Libération du RSP1B avant fermeture...");
-    sdrplay.disconnect();
+    Backend::disconnect(&mut sdrplay);
 
 println!("Attente de libération USB...");
 std::thread::sleep(std::time::Duration::from_millis(2000));
