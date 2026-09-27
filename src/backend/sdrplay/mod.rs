@@ -2274,6 +2274,9 @@ impl Backend for SdrplayBackend {
     fn apply_event(&mut self, event: &Event) -> Result<()> {
         SdrplayBackend::apply_event(self, event)
     }
+	fn take_iq_receiver(&mut self) -> Option<Receiver<IqBlock>> {
+        SdrplayBackend::take_iq_receiver(self)
+    }
 }
 
 impl Drop for SdrplayBackend {

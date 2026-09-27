@@ -76,9 +76,8 @@ println!(">>> TEST START IQ");
     // Récupération du flux IQ avant la connexion au RSP1B.
     // Le thread consommateur sera ainsi prêt avant l'arrivée
     // des premiers blocs IQ.
-    let iq_rx = sdrplay
-        .take_iq_receiver()
-        .expect("Receiver IQ indisponible");
+    let iq_rx = Backend::take_iq_receiver(&mut sdrplay)
+    .expect("Receiver IQ indisponible");
 
     let (rtltcp_tx, rtltcp_commands) =
         RtltcpSink::start_server("0.0.0.0:1234");
