@@ -1,21 +1,24 @@
 mod backend;
 mod core;
+mod output;
 
 use anyhow::Result;
 
 use backend::sdrplay::SdrplayBackend;
+use output::RtltcpSink;
+
 use core::{
     Capabilities,
-    IqMonitorSink,
     Command,
     CommandResult,
-	 Event,
     IfType,
     LoMode,
     Receiver,
     ReceiverMode,
     ReceiverState,
 };
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 fn main() -> Result<()> {
     println!("=================================");
@@ -24,10 +27,21 @@ fn main() -> Result<()> {
     println!("=================================");
     println!();
 
+    let running = Arc::new(AtomicBool::new(true));
+    {
+        let running = Arc::clone(&running);
+        ctrlc::set_handler(move || {
+            println!("\n>>> Ctrl+C reçu, arrêt propre en cours...");
+            running.store(false, Ordering::SeqCst);
+        })
+        .expect("Impossible d'installer le handler Ctrl+C");
+    }
+
     let state = ReceiverState {
         frequency_hz: 100_000_000,
         sample_rate: 2_000_000,
-        bandwidth_hz: 200_000,
+//        bandwidth_hz: 200_000,
+		bandwidth_hz: 1_536_000,
         mode: ReceiverMode::Nfm,
         gain: 50.0,
         ..ReceiverState::default()
@@ -52,11 +66,15 @@ println!(">>> TEST START IQ");
         .take_iq_receiver()
         .expect("Receiver IQ indisponible");
 
+    let (rtltcp_tx, rtltcp_commands) =
+        RtltcpSink::start_server("0.0.0.0:1234");
+
+    let rtltcp = RtltcpSink::new(rtltcp_tx);
+
     std::thread::spawn(move || {
         let mut processor = core::IqProcessor::new();
-        let monitor = IqMonitorSink::new();
 
-        processor.distributor_mut().add_sink(Box::new(monitor));
+        processor.distributor_mut().add_sink(Box::new(rtltcp));
 
         while let Ok(block) = iq_rx.recv() {
             processor.process(block);
@@ -94,7 +112,7 @@ println!(">>> TEST START IQ");
 println!(">>> TEST SAMPLE RATE");
 
 match receiver.handle_command(
-    Command::SetSampleRate(receiver.state().sample_rate)
+    Command::SetSampleRate(2_000_000)
 )? {
     CommandResult::Event(event) => {
         println!("Événement Core : {:?}", event);
@@ -123,30 +141,9 @@ match receiver.handle_command(
 
 
 
-for if_type in [
-    IfType::Zero,
-    IfType::KHz450,
-    IfType::KHz1620,
-    IfType::KHz2048,
-] {
-    println!(">>> TEST IF = {:?}", if_type);
+println!(">>> TEST IF = Zero");
 
-    match receiver.handle_command(Command::SetIfType(if_type))? {
-        CommandResult::Event(event) => {
-            println!("Événement Core : {:?}", event);
-            sdrplay.apply_event(&event)?;
-        }
-        other => {
-            println!("Résultat Core : {:?}", other);
-        }
-    }
-
-    // L'IF est appliquée par apply_event().
-}
-
-println!(">>> TEST LO = Auto");
-
-match receiver.handle_command(Command::SetLoMode(LoMode::Auto))? {
+match receiver.handle_command(Command::SetIfType(IfType::Zero))? {
     CommandResult::Event(event) => {
         println!("Événement Core : {:?}", event);
         sdrplay.apply_event(&event)?;
@@ -155,8 +152,11 @@ match receiver.handle_command(Command::SetLoMode(LoMode::Auto))? {
         println!("Résultat Core : {:?}", other);
     }
 }
-println!(">>> Désactivation AGC AVANT TEST GAIN");
-match receiver.handle_command(Command::SetAgc(false))? {
+
+println!(">>> TEST LO = Auto");
+
+match receiver.handle_command(Command::SetLoMode(LoMode::Auto))? {
+
     CommandResult::Event(event) => {
         println!("Événement Core : {:?}", event);
         sdrplay.apply_event(&event)?;
@@ -182,7 +182,21 @@ match receiver.handle_command(
 
 // Le gain est appliqué par apply_event().
 
-    std::thread::sleep(std::time::Duration::from_millis(300));
+println!(">>> TEST START IQ APRÈS CONFIGURATION");
+
+
+match receiver.handle_command(Command::StartIq)? {
+    CommandResult::Event(event) => {
+        println!("Événement Core : {:?}", event);
+        sdrplay.apply_event(&event)?;
+    }
+    other => {
+        println!("Résultat Core : {:?}", other);
+    }
+}
+
+
+std::thread::sleep(std::time::Duration::from_millis(300));
 
 
 
@@ -208,15 +222,57 @@ println!("{:#?}", receiver.state());
     println!();
     println!("=================================");
     println!(" Attente du flux IQ");
-    println!("=================================");
-    println!("Réception IQ pendant 5 secondes...");
+	println!("=================================");
+	println!("Core actif - attente des commandes RTL-TCP...");
 
-    std::thread::sleep(std::time::Duration::from_secs(5));
+	loop {
+        if !running.load(Ordering::SeqCst) {
+            break;
+        }
+
+        match rtltcp_commands.try_recv() {
+            Ok(command) => {
+                println!(">>> CORE reçoit RTL-TCP : {:?}", command);
+
+                if let Some(core_command) = command.to_core_command() {
+                    println!(">>> Command Core : {:?}", core_command);
+
+                    match receiver.handle_command(core_command) {
+						Ok(CommandResult::Event(event)) => {
+							println!(">>> Événement Core RTL-TCP : {:?}", event);
+
+							println!(">>> APPLY EVENT SDRplay : {:?}", event);
+							if let Err(e) = sdrplay.apply_event(&event) {
+            println!(">>> Erreur SDRplay RTL-TCP : {}", e);
+        }
+    }
+    Ok(other) => {
+        println!(">>> Résultat Core RTL-TCP : {:?}", other);
+    }
+    Err(e) => {
+        println!(">>> Commande Core refusée : {}", e);
+    }
+}
+                }
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                println!(">>> Canal RTL-TCP déconnecté");
+                break;
+            }
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
 
     println!();
     println!("Fin du test IQ.");
 
+    println!("Libération du RSP1B avant fermeture...");
     sdrplay.disconnect();
 
-    Ok(())
+println!("Attente de libération USB...");
+std::thread::sleep(std::time::Duration::from_millis(2000));
+
+Ok(())
 }

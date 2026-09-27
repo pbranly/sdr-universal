@@ -51,6 +51,7 @@ impl Default for Capabilities {
                 500_000,
                 1_000_000,
                 2_000_000,
+				2_048_000,   // ajouté : rate standard DAB / rtl_tcp
                 4_000_000,
                 6_000_000,
                 8_000_000,

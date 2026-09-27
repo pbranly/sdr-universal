@@ -8,3 +8,4 @@ build = "build.rs"
 [dependencies]
 anyhow = "1"
 tokio = { version = "1", features = ["full"] }
+ctrlc = "3.4"
