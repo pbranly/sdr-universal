@@ -22,6 +22,8 @@ pub struct ReceiverState {
     pub mode: ReceiverMode,
 
     pub gain: f32,
+    /// Pas de gain courant (0..=28), voir backend::sdrplay::gain.
+    pub gain_index: usize,
     pub gain_mode: GainMode,
 
     pub agc: bool,
@@ -56,6 +58,7 @@ impl Default for ReceiverState {
             mode: ReceiverMode::Nfm,
 
             gain: 50.0,
+            gain_index: 14,
             gain_mode: GainMode::Manual,
 
             agc: true,

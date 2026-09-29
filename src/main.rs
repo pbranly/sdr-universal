@@ -12,13 +12,14 @@ use core::{
     Capabilities,
     Command,
     CommandResult,
+    GainMode,
     IfType,
     LoMode,
     Receiver,
     ReceiverMode,
     ReceiverState,
 };
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
 fn execute_command(receiver: &mut Receiver, backend: &mut dyn Backend, command: Command) -> Result<()> {
@@ -82,7 +83,12 @@ println!(">>> TEST START IQ");
     let (rtltcp_tx, rtltcp_commands) =
         RtltcpSink::start_server("0.0.0.0:1234");
 
-    let rtltcp = RtltcpSink::new(rtltcp_tx);
+    let requested_sample_rate = Arc::new(AtomicU32::new(2_000_000));
+
+    let rtltcp = RtltcpSink::new(
+        rtltcp_tx,
+        Arc::clone(&requested_sample_rate),
+    );
 
     std::thread::spawn(move || {
         let mut processor = core::IqProcessor::new();
@@ -143,16 +149,22 @@ println!(">>> TEST START IQ");
         Command::SetLoMode(LoMode::Auto),
     )?;
 
-    println!(">>> Réglage du gain à {} dB", receiver.state().gain);
-    println!(">>> TEST CORE GAIN");
-    let gain = receiver.state().gain;
+    // Démarrage prudent : AGC matériel du RSP actif (pas de surcharge à la
+    // première connexion) et pas de gain médian de la bande courante.
+    // Les clients rtl_tcp reprennent ensuite la main (0x03 / 0x04 / 0x0D).
+    println!(">>> Gain initial : AGC RSP + pas {}", backend::sdrplay::gain::DEFAULT_GAIN_INDEX);
     execute_command(
         &mut receiver,
         &mut sdrplay,
-        Command::SetGain(gain),
+        Command::SetGainIndex(backend::sdrplay::gain::DEFAULT_GAIN_INDEX),
+    )?;
+    execute_command(
+        &mut receiver,
+        &mut sdrplay,
+        Command::SetGainMode(GainMode::Automatic),
     )?;
 
-    println!(">>> TEST START IQ APRÈS CONFIGURATION");
+println!(">>> TEST START IQ APRÈS CONFIGURATION");
     execute_command(
         &mut receiver,
         &mut sdrplay,
@@ -193,9 +205,27 @@ println!("{:#?}", receiver.state());
             break;
         }
 
+        // Acquittement des surcharges ADC (hors callbacks de l'API).
+        sdrplay.service();
+
         match rtltcp_commands.try_recv() {
             Ok(command) => {
                 println!(">>> CORE reçoit RTL-TCP : {:?}", command);
+
+                if let output::rtltcp::RtltcpCommand::SetSampleRate(rate) = command {
+                    requested_sample_rate.store(rate, Ordering::Relaxed);
+                    println!(">>> RTL-TCP sample rate demandé : {} Hz", rate);
+                }
+
+                if let output::rtltcp::RtltcpCommand::SetSampleRate(rate) = command {
+                    if rate < 2_000_000 {
+                        println!(
+                            ">>> RTL-TCP : {} Hz traité uniquement par le resampler",
+                            rate
+                        );
+                        continue;
+                    }
+                }
 
                 if let Some(core_command) = command.to_core_command() {
                     println!(">>> Command Core : {:?}", core_command);

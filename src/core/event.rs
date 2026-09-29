@@ -12,6 +12,7 @@ pub enum Event {
     SampleRateChanged(u32),
 
     GainChanged(f32),
+    GainIndexChanged(usize),
     GainModeChanged(GainMode),
     AgcChanged(bool),
 

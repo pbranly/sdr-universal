@@ -8,6 +8,10 @@ use crate::backend::Backend;
 
 use crate::core::{Event, IfType, IqBlock, IqReblocker, IqSample, LoMode};
 
+pub mod gain;
+use gain::Band;
+use std::time::Instant;
+
 const MAX_DEVICES: usize = 16;
 const MAX_SER_NO_LEN: usize = 64;
 
@@ -302,6 +306,12 @@ struct CallbackContext {
     curr_gain_milli_db: AtomicU64,
     callback_gr_db: AtomicU64,
     iq_enabled: AtomicBool,
+    /// Surcharge ADC signalée par le service (et pas encore « corrigée »).
+    overload: AtomicBool,
+    /// Le service attend un acquittement (obligatoire pour recevoir la suite).
+    overload_ack_pending: AtomicBool,
+    /// Nombre d'entrées en surcharge depuis le dernier message affiché.
+    overload_events: AtomicU64,
 }
 
 const _: () = {
@@ -405,6 +415,46 @@ unsafe extern "C" fn stream_a_callback(
     return;
 }
     let callback_count = IQ_CALLBACK_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+
+    if !params.is_null()
+        && ((*params).gr_changed != 0
+            || (*params).rf_changed != 0
+            || (*params).fs_changed != 0
+            || reset != 0)
+    {
+        println!(
+            ">>> SDRplay CALLBACK CHANGE #{} : first={} gr={} rf={} fs={} reset={} num={}",
+            callback_count,
+            (*params).first_sample_num,
+            (*params).gr_changed,
+            (*params).rf_changed,
+            (*params).fs_changed,
+            reset,
+            num_samples
+        );
+
+        // RMS brut du callback exact ayant signalé le changement.
+        let mut sum_i_sq = 0.0f64;
+        let mut sum_q_sq = 0.0f64;
+
+        for index in 0..num_samples as usize {
+            let i = *xi.add(index) as f64 / 32768.0;
+            let q = *xq.add(index) as f64 / 32768.0;
+            sum_i_sq += i * i;
+            sum_q_sq += q * q;
+        }
+
+        let n = num_samples.max(1) as f64;
+        let rms_i = (sum_i_sq / n).sqrt();
+        let rms_q = (sum_q_sq / n).sqrt();
+
+        println!(
+            ">>> CALLBACK RAW RMS : I={:.6} Q={:.6}",
+            rms_i,
+            rms_q
+        );
+    }
+
     if callback_count <= 3 && !params.is_null() {
         let raw = std::slice::from_raw_parts(
             params as *const u8,
@@ -464,10 +514,15 @@ unsafe extern "C" fn stream_a_callback(
         );
     }
 
-    println!(
-        ">>> SDRplay IQ callback #{} : {} samples",
-        callback_count, num_samples
-    );
+    // Un println! par callback (plusieurs centaines par seconde) bloque le
+    // thread temps réel de l'API sur la sortie terminal et provoque des pertes
+    // de paquets USB : une trace toutes les 2000 callbacks suffit.
+    if callback_count % 2000 == 1 {
+        println!(
+            ">>> SDRplay IQ callback #{} : {} samples",
+            callback_count, num_samples
+        );
+    }
 
     let center_frequency_hz = context.center_frequency_hz.load(Ordering::Relaxed);
 
@@ -590,6 +645,26 @@ unsafe extern "C" fn event_callback(
             );
         }
     }
+
+    // sdrplay_api_PowerOverloadChange = 1
+    // Le service n'envoie plus aucun message de surcharge tant que le
+    // précédent n'a pas été acquitté (sdrplay_api_Update_Ctrl_OverloadMsgAck) :
+    // l'acquittement est fait hors de ce callback, par SdrplayBackend::service().
+    if event_id == 1 && !params.is_null() && !cb_context.is_null() {
+        let context = &*(cb_context as *const CallbackContext);
+
+        // 0 = Overload_Detected, 1 = Overload_Corrected
+        let detected =
+            (*params).power_overload_params.power_overload_change_type == 0;
+
+        let was = context.overload.swap(detected, Ordering::Relaxed);
+
+        if detected && !was {
+            context.overload_events.fetch_add(1, Ordering::Relaxed);
+        }
+
+        context.overload_ack_pending.store(true, Ordering::Relaxed);
+    }
 }
 
 pub struct SdrplayBackend {
@@ -600,6 +675,14 @@ pub struct SdrplayBackend {
     selected_device: Option<SdrplayDevice>,
     iq_rx: Option<Receiver<IqBlock>>,
     callback_context: Option<Box<CallbackContext>>,
+    gain_mode: crate::core::GainMode,
+    /// Bande de gain courante (dépend de la fréquence RF).
+    band: Band,
+    /// Dernier pas de gain demandé (0..=28), réappliqué à chaque changement de bande.
+    gain_index: usize,
+    /// AGC matériel SDRplay actif.
+    agc_on: bool,
+    last_overload_log: Instant,
 }
 
 impl SdrplayBackend {
@@ -620,6 +703,9 @@ impl SdrplayBackend {
 			curr_gain_milli_db: AtomicU64::new(0),
 			callback_gr_db: AtomicU64::new(0),
 			iq_enabled: AtomicBool::new(false),
+            overload: AtomicBool::new(false),
+            overload_ack_pending: AtomicBool::new(false),
+            overload_events: AtomicU64::new(0),
         });
 
         Self {
@@ -630,6 +716,11 @@ impl SdrplayBackend {
             selected_device: None,
             iq_rx: Some(iq_rx),
             callback_context: Some(callback_context),
+            gain_mode: crate::core::GainMode::Manual,
+            band: Band::from_hz(200_000_000),
+            gain_index: gain::DEFAULT_GAIN_INDEX,
+            agc_on: false,
+            last_overload_log: Instant::now(),
         }
     }
 
@@ -664,7 +755,19 @@ impl SdrplayBackend {
     pub fn apply_event(&mut self, event: &Event) -> Result<()> {
         match event {
             Event::FrequencyChanged(frequency_hz) => {
+                let old_band = self.band;
+
                 self.set_frequency(*frequency_hz)?;
+
+                // La signification d'un LNAstate change avec la bande :
+                // on réapplique le pas de gain avec la table de la nouvelle bande.
+                if self.band != old_band {
+                    println!(
+                        ">>> Changement de bande {:?} -> {:?} : gain réappliqué (pas {})",
+                        old_band, self.band, self.gain_index
+                    );
+                    self.set_gain_index(self.gain_index)?;
+                }
             }
 
             Event::SampleRateChanged(sample_rate_hz) => {
@@ -687,8 +790,38 @@ impl SdrplayBackend {
                 self.set_gain(*gain_db)?;
             }
 
+            Event::GainIndexChanged(index) => {
+                self.set_gain_index(*index)?;
+            }
+
+                        Event::GainModeChanged(gain_mode) => {
+                self.gain_mode = *gain_mode;
+
+                match gain_mode {
+                    crate::core::GainMode::Automatic => {
+                        self.set_agc(true)?;
+                    }
+                    crate::core::GainMode::Manual => {
+                        // Certains clients renvoient « gain manuel » avant CHAQUE
+                        // réglage de gain : on ne touche au matériel que si l'AGC
+                        // était réellement active (sinon Update inutile et
+                        // retour bref à l'ancien gain avant le nouveau).
+                        if self.agc_on {
+                            self.set_agc(false)?;
+                            // L'AGC a pu déplacer gRdB : retour au pas demandé.
+                            self.set_gain_index(self.gain_index)?;
+                        }
+                    }
+                }
+            }
+
             Event::AgcChanged(enabled) => {
-                self.set_agc(*enabled)?;
+                // rtl_tcp 0x08 = AGC numérique du RTL2832 : sans équivalent sur
+                // un RSP. L'AGC du RSP suit uniquement le mode de gain (0x03).
+                println!(
+                    ">>> BACKEND AGC RTL (0x08) ignoré : enabled={} gain_mode={:?}",
+                    enabled, self.gain_mode
+                );
             }
 
             Event::IqStarted => {
@@ -1050,15 +1183,55 @@ let result = sdrplay_api_SelectDevice(device);
             rx.tuner_params.rf_freq.rf_hz = frequency_hz as f64;
 
             const UPDATE_TUNER_FRF: c_int = 0x00020000;
+            const UPDATE_TUNER_GR: c_int = 0x00008000;
 
             const TUNER_A: c_int = 1;
             const EXT1_NONE: c_int = 0;
 
-            let result = sdrplay_api_Update(device.dev, TUNER_A, UPDATE_TUNER_FRF, EXT1_NONE);
+            // Un LNAstate qui n'existe pas dans la nouvelle bande est refusé
+            // par le service (OutOfRange) : on le ramène au maximum de la
+            // bande dans la même mise à jour.
+            let new_band = Band::from_hz(frequency_hz);
+            let mut reason = UPDATE_TUNER_FRF;
+
+            if rx.tuner_params.gain.lna_state > new_band.max_lna_state() {
+                println!(
+                    ">>> LNAstate {} invalide en bande {:?} : ramené à {}",
+                    rx.tuner_params.gain.lna_state,
+                    new_band,
+                    new_band.max_lna_state()
+                );
+                rx.tuner_params.gain.lna_state = new_band.max_lna_state();
+                reason |= UPDATE_TUNER_GR;
+            }
+
+            self.band = new_band;
+
+            let result = sdrplay_api_Update(device.dev, TUNER_A, reason, EXT1_NONE);
 
 
             if result != 0 {
                 return Err(anyhow!("sdrplay_api_Update(FRF) a échoué : {}", result));
+            }
+
+            let mut verify_params: *mut SdrplayDeviceParams = std::ptr::null_mut();
+
+            if sdrplay_api_GetDeviceParams(device.dev, &mut verify_params) == 0
+                && !verify_params.is_null()
+                && !(*verify_params).rx_channel_a.is_null()
+            {
+                let verify_rx = &*(*verify_params).rx_channel_a;
+
+                println!(
+                    ">>> RF VERIFY : RF={:.0} Hz IF={} kHz BW={} kHz LO={} LNA={} gRdB={} curr={:.2} dB",
+                    verify_rx.tuner_params.rf_freq.rf_hz,
+                    verify_rx.tuner_params.if_type,
+                    verify_rx.tuner_params.bw_type,
+                    verify_rx.tuner_params.lo_mode,
+                    verify_rx.tuner_params.gain.lna_state,
+                    verify_rx.tuner_params.gain.gr_db,
+                    verify_rx.tuner_params.gain.gain_vals.curr
+                );
             }
 
             if let Some(context) = self.callback_context.as_ref() {
@@ -1476,7 +1649,20 @@ println!("LO mode RSP1B réglé à {}", lo_mode);
 
         Ok(())
     }
+/// Gain « rtl_tcp » (commande 0x04, échelle R820T 0..49.6 dB) -> pas de gain.
 pub fn set_gain(&mut self, gain_db: f32) -> Result<()> {
+    if !gain_db.is_finite() {
+        return Err(anyhow!("Gain invalide : {}", gain_db));
+    }
+
+    let tenths = (gain_db.max(0.0) * 10.0).round() as u32;
+
+    self.set_gain_index(gain::index_from_tenths_db(tenths))
+}
+
+/// Applique un pas de gain (0..=28) avec la table de la bande courante :
+/// LNAstate et gRdB sont envoyés ensemble dans une seule mise à jour.
+pub fn set_gain_index(&mut self, index: usize) -> Result<()> {
     if !self.connected {
         return Err(anyhow!("SDRplay non connecté"));
     }
@@ -1489,198 +1675,9 @@ pub fn set_gain(&mut self, gain_db: f32) -> Result<()> {
         return Err(anyhow!("SDRplay non initialisé"));
     }
 
-    if !gain_db.is_finite() {
-        return Err(anyhow!("Gain invalide : {}", gain_db));
-    }
-
-    /*
-     * Cartographie mesurée avec le RSP1B à 145 MHz.
-     *
-     * Chaque entrée est :
-     *
-     *     (LNA state, gRdB réellement appliqué, currGain réel)
-     *
-     * La sélection se fait sur currGain afin d'obtenir le gain
-     * demandé avec une précision maximale de 1 dB.
-     */
-static GAIN_MAP: &[(u8, c_int, f32)] = &[
-    // LNA 0
-    (0, 59, 66.00),
-
-    // LNA 1
-    (1, 59, 59.80),
-
-    // LNA 2
-    (2, 59, 53.20),
-    (2, 58, 54.20),
-    (2, 57, 55.20),
-    (2, 56, 56.20),
-
-    // LNA 3
-    (3, 59, 47.55),
-    (3, 58, 48.55),
-    (3, 57, 49.55),
-    (3, 56, 50.55),
-    (3, 55, 51.55),
-    (3, 54, 52.55),
-    (3, 53, 53.55),
-    (3, 52, 54.55),
-    (3, 51, 55.55),
-    (3, 50, 56.55),
-    (3, 49, 57.55),
-
-    // LNA 4
-    (4, 59, 40.80),
-    (4, 58, 41.80),
-    (4, 57, 42.80),
-    (4, 56, 43.80),
-    (4, 55, 44.80),
-    (4, 54, 45.80),
-    (4, 53, 46.80),
-    (4, 52, 47.80),
-    (4, 51, 48.80),
-    (4, 50, 49.80),
-    (4, 49, 50.80),
-    (4, 48, 51.80),
-    (4, 47, 52.80),
-    (4, 46, 53.80),
-    (4, 45, 54.80),
-    (4, 44, 55.80),
-
-    // LNA 5
-    (5, 59, 34.60),
-    (5, 58, 35.60),
-    (5, 57, 36.60),
-    (5, 56, 37.60),
-    (5, 55, 38.60),
-    (5, 54, 39.60),
-    (5, 53, 40.60),
-    (5, 52, 41.60),
-    (5, 51, 42.60),
-    (5, 50, 43.60),
-    (5, 49, 44.60),
-    (5, 48, 45.60),
-    (5, 47, 46.60),
-    (5, 46, 47.60),
-    (5, 45, 48.60),
-    (5, 44, 49.60),
-    (5, 43, 50.60),
-    (5, 42, 51.60),
-    (5, 41, 52.60),
-    (5, 40, 53.60),
-
-    // LNA 6
-    (6, 59, 28.30),
-    (6, 58, 29.30),
-    (6, 57, 30.30),
-    (6, 56, 31.30),
-    (6, 55, 32.30),
-    (6, 54, 33.30),
-    (6, 53, 34.30),
-    (6, 52, 35.30),
-    (6, 51, 36.30),
-    (6, 49, 38.30),
-    (6, 48, 39.30),
-    (6, 47, 40.30),
-    (6, 45, 42.30),
-    (6, 44, 43.30),
-    (6, 43, 44.30),
-    (6, 42, 45.30),
-    (6, 41, 46.30),
-    (6, 40, 47.30),
-    (6, 39, 48.30),
-    (6, 38, 49.30),
-
-    // LNA 7
-    (7, 59, 22.45),
-    (7, 58, 23.45),
-    (7, 57, 24.45),
-    (7, 56, 25.45),
-    (7, 55, 26.45),
-    (7, 54, 27.45),
-    (7, 53, 28.45),
-    (7, 52, 29.45),
-    (7, 50, 31.45),
-    (7, 49, 32.45),
-    (7, 48, 33.45),
-    (7, 47, 34.45),
-    (7, 45, 36.45),
-    (7, 44, 37.45),
-    (7, 43, 38.45),
-    (7, 42, 39.45),
-    (7, 41, 40.45),
-    (7, 40, 41.45),
-    (7, 39, 42.45),
-    (7, 38, 43.45),
-
-    // LNA 8
-    (8, 59, 3.45),
-    (8, 58, 4.45),
-    (8, 57, 5.45),
-    (8, 56, 6.45),
-    (8, 55, 7.45),
-    (8, 54, 8.45),
-    (8, 53, 9.45),
-    (8, 52, 10.45),
-    (8, 51, 11.45),
-    (8, 50, 12.45),
-    (8, 49, 13.45),
-    (8, 48, 14.45),
-    (8, 47, 15.45),
-    (8, 46, 16.45),
-    (8, 45, 17.45),
-    (8, 44, 18.45),
-    (8, 43, 19.45),
-    (8, 42, 20.45),
-    (8, 41, 21.45),
-    (8, 39, 23.45),
-    (8, 38, 24.45),
-    (8, 37, 25.45),
-    (8, 36, 26.45),
-    (8, 35, 27.45),
-    (8, 33, 29.45),
-    (8, 32, 30.45),
-    (8, 31, 31.45),
-    (8, 30, 32.45),
-    (8, 29, 33.45),
-];
-
-    /*
-     * Recherche du point de calibration donnant le currGain
-     * le plus proche du gain demandé.
-     */
-    let mut best: Option<(u8, c_int, f32, f32)> = None;
-
-    for &(lna_state, gr_db, measured_gain) in GAIN_MAP {
-        let error = (measured_gain - gain_db).abs();
-
-        match best {
-            None => {
-                best = Some((lna_state, gr_db, measured_gain, error));
-            }
-            Some((_, _, _, best_error)) if error < best_error => {
-                best = Some((lna_state, gr_db, measured_gain, error));
-            }
-            _ => {}
-        }
-    }
-
-    let (lna_state, gr_db, expected_gain, error) =
-        best.ok_or_else(|| anyhow!("Aucune calibration de gain disponible"))?;
-
-    /*
-     * La cartographie mesurée ne permet pas de garantir mieux que
-     * ±1 dB pour tous les gains possibles.
-     */
-    if error > 1.0 {
-        return Err(anyhow!(
-            "Gain demandé {:.2} dB non couvert par la calibration à ±1 dB \
-             (meilleur point : {:.2} dB, erreur {:.2} dB)",
-            gain_db,
-            expected_gain,
-            error
-        ));
-    }
+    let index = index.min(gain::GAIN_STEPS - 1);
+    let band = self.band;
+    let (lna_state, gr_db) = gain::settings(band, index);
 
     let device = self.selected_device.ok_or_else(|| {
         anyhow!("Périphérique SDRplay sélectionné introuvable")
@@ -1689,46 +1686,17 @@ static GAIN_MAP: &[(u8, c_int, f32)] = &[
     unsafe {
         let mut params: *mut SdrplayDeviceParams = std::ptr::null_mut();
 
-        let result = sdrplay_api_GetDeviceParams(
-            device.dev,
-            &mut params,
-        );
+        let result = sdrplay_api_GetDeviceParams(device.dev, &mut params);
 
         if result != 0 {
-            return Err(anyhow!(
-                "sdrplay_api_GetDeviceParams a échoué : {}",
-                result
-            ));
+            return Err(anyhow!("sdrplay_api_GetDeviceParams a échoué : {}", result));
         }
 
-        if params.is_null() {
-            return Err(anyhow!(
-                "sdrplay_api_GetDeviceParams a retourné NULL"
-            ));
-        }
-
-        if (*params).rx_channel_a.is_null() {
-            return Err(anyhow!("rxChannelA est NULL"));
+        if params.is_null() || (*params).rx_channel_a.is_null() {
+            return Err(anyhow!("Paramètres du canal RX A indisponibles"));
         }
 
         let rx = &mut *(*params).rx_channel_a;
-println!(
-    ">>> GAIN AVANT REGLAGE : LNAstate={} gRdB={} curr={:.2} max={:.2} min={:.2}",
-    rx.tuner_params.gain.lna_state,
-    rx.tuner_params.gain.gr_db,
-    rx.tuner_params.gain.gain_vals.curr,
-    rx.tuner_params.gain.gain_vals.max,
-    rx.tuner_params.gain.gain_vals.min,
-);
-        println!(
-            "Réglage gain global : demandé={:.2} dB -> \
-             LNA={} gRdB={} gain_mesuré={:.2} dB erreur={:.2} dB",
-            gain_db,
-            lna_state,
-            gr_db,
-            expected_gain,
-            error
-        );
 
         rx.tuner_params.gain.lna_state = lna_state;
         rx.tuner_params.gain.gr_db = gr_db;
@@ -1737,112 +1705,99 @@ println!(
         const TUNER_A: c_int = 1;
         const EXT1_NONE: c_int = 0;
 
-        /*
-         * Invalidation de l'ancien callback avant Update().
-         */
-        if let Some(context) = self.callback_context.as_ref() {
-            context
-                .callback_gr_db
-                .store(u64::MAX, Ordering::Relaxed);
-        }
-
-        let result = sdrplay_api_Update(
-            device.dev,
-            TUNER_A,
-            UPDATE_TUNER_GR,
-            EXT1_NONE,
-        );
+        let result =
+            sdrplay_api_Update(device.dev, TUNER_A, UPDATE_TUNER_GR, EXT1_NONE);
 
         if result != 0 {
             return Err(anyhow!(
-                "sdrplay_api_Update(GR) a échoué : {}",
+                "sdrplay_api_Update(GR) a échoué (bande {:?}, pas {}, LNA={}, gRdB={}) : {}",
+                band,
+                index,
+                lna_state,
+                gr_db,
                 result
             ));
         }
-let mut verify_params: *mut SdrplayDeviceParams = std::ptr::null_mut();
 
-let verify_result = sdrplay_api_GetDeviceParams(
-    device.dev,
-    &mut verify_params,
-);
+        let mut verify_params: *mut SdrplayDeviceParams = std::ptr::null_mut();
 
-if verify_result == 0 && !verify_params.is_null() {
-    if !(*verify_params).rx_channel_a.is_null() {
-        let verify_rx = &*(*verify_params).rx_channel_a;
+        if sdrplay_api_GetDeviceParams(device.dev, &mut verify_params) == 0
+            && !verify_params.is_null()
+            && !(*verify_params).rx_channel_a.is_null()
+        {
+            let v = &*(*verify_params).rx_channel_a;
 
-        println!(
-            ">>> VERIFY GAIN : LNAstate={} gRdB={} curr={:.2} max={:.2} min={:.2}",
-            verify_rx.tuner_params.gain.lna_state,
-            verify_rx.tuner_params.gain.gr_db,
-            verify_rx.tuner_params.gain.gain_vals.curr,
-            verify_rx.tuner_params.gain.gain_vals.max,
-            verify_rx.tuner_params.gain.gain_vals.min,
-        );
-    }
-}
-        /*
-         * Le callback confirme le gRdB réellement appliqué et fournit
-         * le currGain réel.
-         */
-        if let Some(context) = self.callback_context.as_ref() {
-            let mut callback_seen = false;
-
-            for _ in 0..100 {
-				let callback_gr_db =
-                    context.callback_gr_db.load(Ordering::Relaxed);
-
-                if callback_gr_db == gr_db as u64 {
-                    callback_seen = true;
-                    break;
-                }
-
-                std::thread::sleep(
-                    std::time::Duration::from_millis(5)
-                );
-            }
-
-            let callback_gr_db =
-                context.callback_gr_db.load(Ordering::Relaxed);
-
-            let lna_gr_db =
-                context.lna_gr_db.load(Ordering::Relaxed);
-
-            let curr_gain =
-                context.curr_gain_milli_db.load(Ordering::Relaxed)
-                    as f64 / 1000.0;
-
-if callback_seen {
-    println!(
-        "Gain callback : gRdB={} lnaGRdB={} currGain={:.2} dB",
-        callback_gr_db,
-        lna_gr_db,
-        curr_gain
-    );
-} else {
-                return Err(anyhow!(
-                    "SDRplay n'a pas confirmé le gRdB demandé : \
-                     demandé={} dernier={} currGain={:.2} dB",
-                    gr_db,
-                    callback_gr_db,
-                    curr_gain
-                ));
-            }
+            println!(
+                ">>> GAIN : bande={:?} pas={}/{} -> LNA={} gRdB={} | réel LNA={} gRdB={} curr={:.2} dB (AGC={})",
+                band,
+                index,
+                gain::GAIN_STEPS - 1,
+                lna_state,
+                gr_db,
+                v.tuner_params.gain.lna_state,
+                v.tuner_params.gain.gr_db,
+                v.tuner_params.gain.gain_vals.curr,
+                self.agc_on
+            );
         }
+    }
 
-        println!(
-            "Gain global appliqué : demandé={:.2} dB",
-            gain_db
-        );
-        println!("  LNA state : {}", lna_state);
-        println!("  gRdB      : {}", gr_db);
-        println!(
-            "  calibration : {:.2} dB (erreur {:.2} dB)",
-            expected_gain,
-            error
-        );
+    self.gain_index = index;
+
+    // Comme rsp_tcp : après un changement de LNAstate, on ré-applique
+    // la configuration AGC (l'AGC reprend la main sur gRdB).
+    if self.agc_on {
+        self.set_agc(true)?;
     }
 
     Ok(())
+}
+
+/// À appeler régulièrement depuis la boucle principale (hors callbacks API) :
+/// acquitte les messages de surcharge et signale les surcharges ADC.
+pub fn service(&mut self) {
+    let ack = match self.callback_context.as_ref() {
+        Some(context) => context.overload_ack_pending.swap(false, Ordering::Relaxed),
+        None => return,
+    };
+
+    if ack && self.initialized {
+        if let Some(device) = self.selected_device {
+            const UPDATE_CTRL_OVERLOAD_ACK: c_int = 0x04000000;
+            const TUNER_A: c_int = 1;
+            const EXT1_NONE: c_int = 0;
+
+            let result = unsafe {
+                sdrplay_api_Update(
+                    device.dev,
+                    TUNER_A,
+                    UPDATE_CTRL_OVERLOAD_ACK,
+                    EXT1_NONE,
+                )
+            };
+
+            if result != 0 {
+                println!("Acquittement surcharge : Update a échoué ({})", result);
+            }
+        }
+    }
+
+    if let Some(context) = self.callback_context.as_ref() {
+        let events = context.overload_events.load(Ordering::Relaxed);
+
+        if events > 0
+            && self.last_overload_log.elapsed() >= std::time::Duration::from_secs(2)
+        {
+            context.overload_events.store(0, Ordering::Relaxed);
+            self.last_overload_log = Instant::now();
+
+            println!(
+                "!!! SURCHARGE ADC ({} fois) bande={:?} pas de gain={} : réduire le gain \
+                 (LNAstate plus élevé) ou activer l'AGC",
+                events, self.band, self.gain_index
+            );
+        }
+    }
 }
 pub fn set_gr_db_test(&mut self, gr_db: c_int) -> Result<()> {
     if !self.connected {
@@ -2175,7 +2130,20 @@ pub fn set_gr_db_test(&mut self, gr_db: c_int) -> Result<()> {
  *   3 = AGC_5HZ
  *   4 = AGC_CTRL_EN
  */
-rx.ctrl_params.agc.enable = if enabled { 1 } else { 0 };
+if enabled {
+    // Même réglage que rsp_tcp (SDRplay) : schéma d'AGC « CTRL_EN » lent
+    // (constantes de temps 500 ms), adapté à un flux large bande comme le DAB,
+    // consigne -30 dBFS (plage valide -72..-20). L'ancien « 1 » = AGC_100HZ,
+    // boucle rapide (100 Hz) avec la consigne par défaut -60 dBFS.
+    rx.ctrl_params.agc.enable = 4;
+    rx.ctrl_params.agc.set_point_dbfs = -30;
+    rx.ctrl_params.agc.attack_ms = 500;
+    rx.ctrl_params.agc.decay_ms = 500;
+    rx.ctrl_params.agc.decay_delay_ms = 200;
+    rx.ctrl_params.agc.decay_threshold_db = 5;
+} else {
+    rx.ctrl_params.agc.enable = 0;
+}
 
 
 
@@ -2198,6 +2166,22 @@ const UPDATE_CTRL_AGC: c_int = 0x01000000;
                 ));
             }
 
+            // Vérification de la valeur AGC réellement conservée par SDRplay
+            let mut verify_params: *mut SdrplayDeviceParams = std::ptr::null_mut();
+
+            if sdrplay_api_GetDeviceParams(device.dev, &mut verify_params) == 0
+                && !verify_params.is_null()
+                && !(*verify_params).rx_channel_a.is_null()
+            {
+                let verify_rx = &*(*verify_params).rx_channel_a;
+
+                println!(
+                    ">>> AGC VERIFY : demandé={} agc.enable={}",
+                    enabled,
+                    verify_rx.ctrl_params.agc.enable
+                );
+            }
+
             println!(
                 "AGC RSP1B {}",
                 if enabled {
@@ -2207,6 +2191,8 @@ const UPDATE_CTRL_AGC: c_int = 0x01000000;
                 }
             );
         }
+
+        self.agc_on = enabled;
 
         Ok(())
     }

@@ -14,6 +14,8 @@ pub enum Command {
     SetSampleRate(u32),
 
     SetGain(f32),
+    /// Pas de gain 0..=28 (commande rtl_tcp 0x0D) : LNAstate + gRdB de la bande courante.
+    SetGainIndex(usize),
     SetGainMode(super::GainMode),
     SetAgc(bool),
 

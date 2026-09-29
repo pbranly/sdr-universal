@@ -115,12 +115,16 @@ impl Receiver {
             }
 
             Command::SetSampleRate(sample_rate) => {
-                if !self.capabilities.sample_rates.contains(&sample_rate) {
-                    return Err(anyhow!(
-                        "Sample rate non supporté : {} Hz",
-                        sample_rate
-                    ));
-                }
+    const MIN_SAMPLE_RATE: u32 = 2_000_000;  // plancher ADC RSP1B sans décimation
+    const MAX_SAMPLE_RATE: u32 = 10_000_000;
+
+    if sample_rate < MIN_SAMPLE_RATE || sample_rate > MAX_SAMPLE_RATE {
+        return Err(anyhow!(
+            "Sample rate {} Hz hors plage supportée ({}–{} Hz)",
+            sample_rate, MIN_SAMPLE_RATE, MAX_SAMPLE_RATE
+        ));
+    }
+
 
                 self.state.sample_rate = sample_rate;
 
@@ -144,6 +148,20 @@ impl Receiver {
                 self.state.gain = gain;
 
                 Ok(CommandResult::Event(Event::GainChanged(gain)))
+            }
+
+            Command::SetGainIndex(index) => {
+                if index >= self.capabilities.gain_steps {
+                    return Err(anyhow!(
+                        "Pas de gain hors limites : {} (0 - {})",
+                        index,
+                        self.capabilities.gain_steps - 1
+                    ));
+                }
+
+                self.state.gain_index = index;
+
+                Ok(CommandResult::Event(Event::GainIndexChanged(index)))
             }
 
             Command::SetGainMode(gain_mode) => {

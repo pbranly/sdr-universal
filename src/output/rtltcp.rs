@@ -3,7 +3,7 @@ use crate::core::iq::IqSink;
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::thread;
@@ -15,6 +15,7 @@ pub enum RtltcpCommand {
     SetSampleRate(u32),
     SetGainMode(u32),
     SetGain(u32),
+    SetGainIndex(u32),
     SetAgc(bool),
     Unknown(u8, u32),
 }
@@ -26,6 +27,7 @@ impl RtltcpCommand {
             0x02 => Self::SetSampleRate(value),
             0x03 => Self::SetGainMode(value),
             0x04 => Self::SetGain(value),
+            0x0D => Self::SetGainIndex(value),
             0x08 => Self::SetAgc(value != 0),
             _ => Self::Unknown(command, value),
         }
@@ -55,6 +57,10 @@ impl RtltcpCommand {
 				Some(Command::SetGain(value as f32 / 10.0))
 			}
 
+            Self::SetGainIndex(value) => {
+                Some(Command::SetGainIndex(value as usize))
+            }
+
             Self::SetAgc(value) => {
                 Some(Command::SetAgc(value))
             }
@@ -68,14 +74,26 @@ pub struct RtltcpSink {
     samples_processed: u64,
     blocks_processed: u64,
     iq_tx: Sender<Vec<u8>>,
+    requested_sample_rate: Arc<AtomicU32>,
+
+    // État conservé entre deux blocs IQ pour assurer
+    // la continuité du resampling.
+    resample_buffer: Vec<crate::core::iq::IqSample>,
+    resample_position: f64,
 }
 
 impl RtltcpSink {
-    pub fn new(iq_tx: Sender<Vec<u8>>) -> Self {
+    pub fn new(
+        iq_tx: Sender<Vec<u8>>,
+        requested_sample_rate: Arc<AtomicU32>,
+    ) -> Self {
         Self {
             samples_processed: 0,
             blocks_processed: 0,
             iq_tx,
+            requested_sample_rate,
+            resample_buffer: Vec::new(),
+            resample_position: 0.0,
         }
     }
 
@@ -83,52 +101,104 @@ impl RtltcpSink {
         self.samples_processed
     }
 
-    fn convert_sample(value: f32) -> u8 {
-        let value = value.clamp(-1.0, 1.0);
-
-        ((value + 1.0) * 127.5) as u8
+    /// Conversion d'un échantillon flottant vers un octet rtl_tcp (non signé,
+    /// centré sur 128 comme rsp_tcp et les clients rtl_tcp).
+    fn convert_sample(value: f32, gain: f32) -> u8 {
+        (value * gain + 128.0).round().clamp(0.0, 255.0) as u8
     }
 
-    pub fn convert_block(block: &IqBlock) -> Vec<u8> {
-    static DEBUG_COUNT: std::sync::atomic::AtomicUsize =
-        std::sync::atomic::AtomicUsize::new(0);
+    fn resample_block(
+        &mut self,
+        block: &IqBlock,
+    ) -> Vec<crate::core::iq::IqSample> {
+        let input_rate = block.sample_rate as f64;
+        let output_rate =
+            self.requested_sample_rate.load(Ordering::Relaxed) as f64;
 
-    let debug_count =
-        DEBUG_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if input_rate <= 0.0 || output_rate <= 0.0 {
+            return Vec::new();
+        }
 
-    let mut output = Vec::with_capacity(block.samples.len() * 2);
+        self.resample_buffer.extend_from_slice(&block.samples);
 
-    for sample in &block.samples {
-        output.push(Self::convert_sample(sample.i));
-        output.push(Self::convert_sample(sample.q));
+        let step = input_rate / output_rate;
+        let mut output = Vec::new();
+
+        while self.resample_position + 1.0
+            < self.resample_buffer.len() as f64
+        {
+            let index = self.resample_position.floor() as usize;
+            let fraction =
+                (self.resample_position - index as f64) as f32;
+
+            let a = &self.resample_buffer[index];
+            let b = &self.resample_buffer[index + 1];
+
+            output.push(crate::core::iq::IqSample {
+                i: a.i + (b.i - a.i) * fraction,
+                q: a.q + (b.q - a.q) * fraction,
+            });
+
+            self.resample_position += step;
+        }
+
+        let consumed = self.resample_position.floor() as usize;
+
+        if consumed > 0 {
+            self.resample_buffer.drain(0..consumed);
+            self.resample_position -= consumed as f64;
+        }
+
+        output
     }
 
-//    for sample in &block.samples {
-//		output.push(Self::convert_sample(sample.q));  // Q d'abord
-//		output.push(Self::convert_sample(sample.i));  // puis I
-//	}
-    if debug_count < 3 && output.len() >= 8 {
-        println!(
-            ">>> RTL-TCP INPUT : I/Q=({:.4}, {:.4})",
-            block.samples[0].i,
-            block.samples[0].q
-        );
+    /// Facteur flottant -> octets, identique à rsp_tcp (SDRplay) :
+    /// `(xi << 2) >> 8` sur des i16 équivaut à xi/64, soit 32768/64 = 512 pour
+    /// une valeur normalisée à ±1.0. Le facteur est FIXE : le niveau envoyé au
+    /// client doit varier avec le gain du RSP, sinon l'AGC logicielle du client
+    /// (AbracaDABra) ne voit jamais l'effet de ses commandes de gain.
+    /// Les valeurs qui dépassent sont écrêtées à 0..=255.
+    const NOMINAL_GAIN: f32 = 512.0;
 
-        println!(
-            ">>> RTL-TCP OUTPUT : {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
-            output[0],
-            output[1],
-            output[2],
-            output[3],
-            output[4],
-            output[5],
-            output[6],
-            output[7],
-        );
+    pub fn convert_block(&mut self, block: &IqBlock) -> Vec<u8> {
+        static DEBUG_COUNT: std::sync::atomic::AtomicUsize =
+            std::sync::atomic::AtomicUsize::new(0);
+
+        let debug_count =
+            DEBUG_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let gain = Self::NOMINAL_GAIN;
+
+        let mut output = Vec::with_capacity(block.samples.len() * 2);
+
+        for sample in &block.samples {
+            output.push(Self::convert_sample(sample.i, gain));
+            output.push(Self::convert_sample(sample.q, gain));
+        }
+
+        if debug_count < 3 && output.len() >= 8 {
+            println!(
+                ">>> RTL-TCP INPUT : I/Q=({:.4}, {:.4}) facteur={:.1}",
+                block.samples[0].i,
+                block.samples[0].q,
+                gain
+            );
+
+            println!(
+                ">>> RTL-TCP OUTPUT : {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
+                output[0],
+                output[1],
+                output[2],
+                output[3],
+                output[4],
+                output[5],
+                output[6],
+                output[7],
+            );
+        }
+
+        output
     }
-
-    output
-}
 
     pub fn start_server(
         addr: &str,
@@ -137,6 +207,42 @@ impl RtltcpSink {
         let (command_tx, command_rx) = mpsc::channel::<RtltcpCommand>();
 
         let addr = addr.to_string();
+
+        /*
+         * Liste des clients RTL-TCP actuellement connectés.
+         *
+         * Le Core IQ conserve un seul Sender permanent vers le serveur.
+         * Le serveur distribue ensuite chaque bloc IQ aux clients.
+         */
+        let clients: Arc<
+            std::sync::Mutex<Vec<Sender<Vec<u8>>>>
+        > = Arc::new(std::sync::Mutex::new(Vec::new()));
+
+        /*
+         * THREAD DISTRIBUTEUR IQ
+         *
+         * Le Receiver IQ appartient définitivement au serveur.
+         * Il n'est donc jamais transféré à un client.
+         */
+        let clients_iq = Arc::clone(&clients);
+
+        thread::spawn(move || {
+            while let Ok(data) = iq_rx.recv() {
+                let mut clients = match clients_iq.lock() {
+                    Ok(clients) => clients,
+                    Err(_) => {
+                        eprintln!("RTL-TCP : verrou clients empoisonné");
+                        break;
+                    }
+                };
+
+                clients.retain(|client_tx| {
+                    client_tx.send(data.clone()).is_ok()
+                });
+            }
+
+            println!(">>> RTL-TCP distributeur IQ arrêté");
+        });
 
         thread::spawn(move || {
             let listener = match TcpListener::bind(&addr) {
@@ -161,41 +267,31 @@ impl RtltcpSink {
                         println!(">>> RTL-TCP client connecté");
 
                         /*
-                         * On supprime les anciens blocs IQ éventuellement
-                         * accumulés pendant qu'aucun client n'était connecté.
-                         *
-                         * Cela évite qu'une reconnexion reçoive plusieurs
-                         * secondes d'anciens IQ avant d'arriver au temps réel.
+                         * Chaque client possède maintenant son propre
+                         * canal IQ. Le Receiver principal reste dans
+                         * le thread distributeur.
                          */
-                        loop {
-                            match iq_rx.try_recv() {
-                                Ok(_) => {}
+                        let (client_iq_tx, client_iq_rx) =
+                            mpsc::channel::<Vec<u8>>();
 
-                                Err(mpsc::TryRecvError::Empty) => {
-                                    break;
-                                }
-
-                                Err(mpsc::TryRecvError::Disconnected) => {
-                                    return;
-                                }
-                            }
+                        if let Ok(mut clients) = clients.lock() {
+                            clients.push(client_iq_tx);
+                        } else {
+                            eprintln!(
+                                "RTL-TCP : impossible d'enregistrer le client"
+                            );
+                            continue;
                         }
 
                         let command_tx = command_tx.clone();
 
                         Self::handle_client(
                             stream,
-                            iq_rx,
+                            client_iq_rx,
                             command_tx,
                         );
 
                         println!("<<< RTL-TCP client déconnecté");
-
-                        /*
-                         * Le Receiver IQ est unique et est réutilisé
-                         * pour le prochain client.
-                         */
-                        return;
                     }
 
                     Err(err) => {
@@ -436,8 +532,14 @@ if recv_count % 100 == 0 {
          * 4 octets : gain index
          */
         header.extend_from_slice(b"RTL0");
-        header.extend_from_slice(&1u32.to_be_bytes());
-        header.extend_from_slice(&0u32.to_be_bytes());
+        // Type de tuner 5 = R820T : les clients (AbracaDABra, SDR#...) en
+        // déduisent une liste de 29 gains. Avec « 1 » (E4000) et un nombre de
+        // gains à 0, la liste était vide et AbracaDABra n'envoyait jamais
+        // aucune commande de gain.
+        header.extend_from_slice(&5u32.to_be_bytes());
+        header.extend_from_slice(
+            &(crate::backend::sdrplay::gain::GAIN_STEPS as u32).to_be_bytes(),
+        );
 
         stream.write_all(&header)
     }
@@ -446,18 +548,37 @@ if recv_count % 100 == 0 {
 impl Default for RtltcpSink {
     fn default() -> Self {
         let (iq_tx, _iq_rx) = mpsc::channel();
+        let requested_sample_rate =
+            Arc::new(AtomicU32::new(2_000_000));
 
-        Self::new(iq_tx)
+        Self::new(iq_tx, requested_sample_rate)
     }
 }
 
 impl IqSink for RtltcpSink {
     fn push(&mut self, block: &IqBlock) {
-        let rtl_iq = Self::convert_block(block);
+        let resampled_samples = self.resample_block(block);
+
+        let resampled_block = IqBlock {
+            sequence: block.sequence,
+            timestamp: block.timestamp,
+            center_frequency_hz: block.center_frequency_hz,
+            sample_rate: self.requested_sample_rate.load(Ordering::Relaxed),
+            samples: resampled_samples,
+        };
+
+        let rtl_iq = self.convert_block(&resampled_block);
 
         self.blocks_processed += 1;
-        self.samples_processed += block.samples.len() as u64;
-
+        self.samples_processed += resampled_block.samples.len() as u64;
+	if self.blocks_processed % 500 == 0 {
+    println!(
+        ">>> RTL-TCP PUSH #{} : freq={} Hz samples={}",
+        self.blocks_processed,
+        block.center_frequency_hz,
+        block.samples.len()
+    );
+}
         if self.blocks_processed % 100 == 0 {
             let mut i_min = f32::INFINITY;
             let mut i_max = f32::NEG_INFINITY;
@@ -492,12 +613,37 @@ impl IqSink for RtltcpSink {
 
             let non7f = rtl_iq.iter().filter(|&&v| v != 0x7f).count();
 
+            let resampled_i_rms = if resampled_block.samples.is_empty() {
+                0.0
+            } else {
+                (resampled_block.samples.iter()
+                    .map(|s| (s.i as f64) * (s.i as f64))
+                    .sum::<f64>()
+                    / resampled_block.samples.len() as f64)
+                    .sqrt()
+            };
+
+            let resampled_q_rms = if resampled_block.samples.is_empty() {
+                0.0
+            } else {
+                (resampled_block.samples.iter()
+                    .map(|s| (s.q as f64) * (s.q as f64))
+                    .sum::<f64>()
+                    / resampled_block.samples.len() as f64)
+                    .sqrt()
+            };
+
             println!(
-                ">>> RTL IQ #{} | seq={} | freq={} Hz | rate={} Hz",
+                ">>> RTL IQ #{} | seq={} | freq={} Hz | input={} Hz | output={} Hz | samples={} | bytes={} | RMSout=({:.4},{:.4})",
                 self.blocks_processed,
                 block.sequence,
                 block.center_frequency_hz,
-                block.sample_rate
+                block.sample_rate,
+                resampled_block.sample_rate,
+                resampled_block.samples.len(),
+                rtl_iq.len(),
+                resampled_i_rms,
+                resampled_q_rms
             );
 
             println!(

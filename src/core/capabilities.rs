@@ -30,6 +30,8 @@ pub struct Capabilities {
 
     pub gain_min_db: f32,
     pub gain_max_db: f32,
+    /// Nombre de pas de gain exposés (0..gain_steps).
+    pub gain_steps: usize,
 
     pub antennas: Vec<String>,
 
@@ -96,6 +98,7 @@ impl Default for Capabilities {
 
             gain_min_db: 0.0,
             gain_max_db: 59.0,
+            gain_steps: 29,
 
             antennas: vec!["A".to_string()],
 
