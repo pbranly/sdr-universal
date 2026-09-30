@@ -126,12 +126,16 @@ Try it without hardware:
 
 ## Licensing note
 
-No license file has been chosen yet. The per-band gain tables in
-`src/backend/gain.rs` come from SDRplay's `rsp_tcp`
-(<https://github.com/SDRplay/RSPTCPServer>), whose source files carry a GNU GPL
-notice (version 2 or later) and whose repository is licensed under GPL-3.0. Choose
-a license that is compatible with that before distributing binaries or accepting
-contributions. (This note is not legal advice.)
+## License
+
+This project is licensed under the **GNU General Public License v3.0 or later**
+([GPL-3.0-or-later](https://www.gnu.org/licenses/gpl-3.0.html)).
+
+See the [LICENSE](LICENSE) file for the full text.
+
+The per-band gain tables in `src/backend/gain.rs` are derived from SDRplay's
+[`rsp_tcp`](https://github.com/SDRplay/RSPTCPServer) (GPL-3.0). This project
+is therefore distributed under a compatible license.
 
 ## Credits
 
