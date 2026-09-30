@@ -198,40 +198,40 @@ jobs:
           DEPENDS="libc6"
 
           cat > "$PKG_DIR/DEBIAN/control" << EOF
-Package: sdr-universal
-Version: ${VERSION}
-Section: hamradio
-Priority: optional
-Architecture: ${ARCH}
-Maintainer: pbranly <https://github.com/pbranly>
-Depends: ${DEPENDS}
-Homepage: https://github.com/pbranly/sdr-universal
-Description: rtl_tcp gateway for SDRplay RSP1B
- Exposes an SDRplay RSP1B as an rtl_tcp server so that software
- written for RTL-SDR (e.g. AbracaDABra) can use the RSP with
- correct per-band gain, RF level and bandwidth selection.
- .
- Requires the SDRplay API 3.x (libsdrplay_api) installed from
- https://www.sdrplay.com/software/install.sh and the service
- sdrplay_apiService running.
- EOF
+          Package: sdr-universal
+          Version: ${VERSION}
+          Section: hamradio
+          Priority: optional
+          Architecture: ${ARCH}
+          Maintainer: pbranly <https://github.com/pbranly>
+          Depends: ${DEPENDS}
+          Homepage: https://github.com/pbranly/sdr-universal
+          Description: rtl_tcp gateway for SDRplay RSP1B
+           Exposes an SDRplay RSP1B as an rtl_tcp server so that software
+           written for RTL-SDR (e.g. AbracaDABra) can use the RSP with
+           correct per-band gain, RF level and bandwidth selection.
+           .
+           Requires the SDRplay API 3.x (libsdrplay_api) installed from
+           https://www.sdrplay.com/software/install.sh and the service
+           sdrplay_apiService running.
+          EOF
 
           echo "Debian control file:"
           cat "$PKG_DIR/DEBIAN/control"
 
           cat > "$PKG_DIR/DEBIAN/postinst" << 'POSTINST'
-#!/bin/sh
-set -e
+          #!/bin/sh
+          set -e
 
-if ! ldconfig -p 2>/dev/null | grep -q libsdrplay_api; then
-    echo "sdr-universal: warning: libsdrplay_api not found."
-    echo "  Install the SDRplay API 3.x:"
-    echo "  curl -fsSL https://www.sdrplay.com/software/install.sh | sudo bash"
-    echo "  Then ensure sdrplay_apiService is running."
-fi
+          if ! ldconfig -p 2>/dev/null | grep -q libsdrplay_api; then
+              echo "sdr-universal: warning: libsdrplay_api not found."
+              echo "  Install the SDRplay API 3.x:"
+              echo "  curl -fsSL https://www.sdrplay.com/software/install.sh | sudo bash"
+              echo "  Then ensure sdrplay_apiService is running."
+          fi
 
-exit 0
-POSTINST
+          exit 0
+          POSTINST
 
           chmod 755 "$PKG_DIR/DEBIAN/postinst"
 
@@ -296,7 +296,7 @@ POSTINST
           set -euo pipefail
 
           echo "Release files:"
-          find release -type f -maxdepth 2 -print -exec ls -lh {} \;
+          find release -maxdepth 2 -type f -print -exec ls -lh {} \;
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
