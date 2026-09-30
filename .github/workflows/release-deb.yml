@@ -118,6 +118,7 @@ jobs:
 
       - name: Build .deb package
         run: |
+		  set -euxo pipefail
           VERSION="${{ steps.ver.outputs.version }}"
           ARCH="${{ matrix.arch }}"
           BIN="target/${{ matrix.target }}/release/sdr-universal"
