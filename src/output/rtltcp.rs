@@ -86,7 +86,7 @@ impl RtltcpCommand {
                 // Le RSP n'a que quelques largeurs de filtre : on prend la
                 // plus proche par excès (1,53 MHz d'AbracaDABra -> 1,536 MHz).
                 Some(Command::SetBandwidth(
-                    crate::backend::sdrplay::bandwidth::snap_hz(value),
+                    crate::backend::bandwidth::snap_hz(value),
                 ))
             }
 
@@ -563,7 +563,7 @@ if recv_count % 100 == 0 {
         // aucune commande de gain.
         header.extend_from_slice(&5u32.to_be_bytes());
         header.extend_from_slice(
-            &(crate::backend::sdrplay::gain::GAIN_STEPS as u32).to_be_bytes(),
+            &(crate::backend::gain::GAIN_STEPS as u32).to_be_bytes(),
         );
 
         stream.write_all(&header)

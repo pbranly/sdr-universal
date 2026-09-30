@@ -19,7 +19,9 @@ mod output;
 
 use anyhow::Result;
 
+use backend::mock::MockBackend;
 use backend::Backend;
+#[cfg(feature = "sdrplay")]
 use backend::sdrplay::SdrplayBackend;
 use output::RtltcpSink;
 
@@ -36,6 +38,34 @@ use core::{
 };
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
+
+/// Valeur d'une option `--nom valeur` de la ligne de commande.
+fn arg_value(name: &str) -> Option<String> {
+    let args: Vec<String> = std::env::args().collect();
+    args.iter()
+        .position(|a| a == name)
+        .and_then(|i| args.get(i + 1).cloned())
+}
+
+/// Backend réel (SDRplay) ou factice (--mock / SDR_MOCK=1, sans matériel).
+fn create_backend(mock: bool, mock_level_dbm: f64) -> Result<Box<dyn Backend>> {
+    if mock {
+        println!(">>> MODE FACTICE : aucun matériel, niveau d'antenne simulé {} dBm", mock_level_dbm);
+        return Ok(Box::new(MockBackend::new(mock_level_dbm)));
+    }
+
+    #[cfg(feature = "sdrplay")]
+    {
+        Ok(Box::new(SdrplayBackend::new()))
+    }
+
+    #[cfg(not(feature = "sdrplay"))]
+    {
+        Err(anyhow::anyhow!(
+            "Compilé sans le backend SDRplay : relancez avec --mock"
+        ))
+    }
+}
 
 fn execute_command(receiver: &mut Receiver, backend: &mut dyn Backend, command: Command) -> Result<()> {
     match receiver.handle_command(command)? {
@@ -93,20 +123,33 @@ println!(">>> TEST START IQ");
 
     println!("Connexion au SDRplay...");
 
-    let mut sdrplay = SdrplayBackend::new();
+    let use_mock = std::env::args().any(|a| a == "--mock")
+        || std::env::var("SDR_MOCK").map(|v| v == "1").unwrap_or(false);
+
+    let mock_level_dbm: f64 = arg_value("--mock-level")
+        .or_else(|| std::env::var("SDR_MOCK_LEVEL_DBM").ok())
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(-75.0);
+
+    let rtltcp_port: u16 = arg_value("--port")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1234);
+
+    let mut radio = create_backend(use_mock, mock_level_dbm)?;
 
     // Récupération du flux IQ avant la connexion au RSP1B.
     // Le thread consommateur sera ainsi prêt avant l'arrivée
     // des premiers blocs IQ.
-    let iq_rx = Backend::take_iq_receiver(&mut sdrplay)
-    .expect("Receiver IQ indisponible");
+    let iq_rx = radio
+        .take_iq_receiver()
+        .expect("Receiver IQ indisponible");
 
     let (rtltcp_tx, rtltcp_commands) =
-        RtltcpSink::start_server("0.0.0.0:1234");
+        RtltcpSink::start_server(&format!("0.0.0.0:{}", rtltcp_port));
 
     // Port de contrôle (rtl_tcp + 1) : gain réel du RSP pour le niveau RF
     // d'AbracaDABra.
-    output::control::start_server("0.0.0.0:1235");
+    output::control::start_server(&format!("0.0.0.0:{}", rtltcp_port + 1));
 
     let requested_sample_rate = Arc::new(AtomicU32::new(2_000_000));
 
@@ -131,7 +174,7 @@ println!(">>> TEST START IQ");
         );
     });
 
-    Backend::connect(&mut sdrplay)?;
+    radio.connect()?;
 
     println!();
     println!("SDRplay connecté.");
@@ -141,14 +184,14 @@ println!(">>> TEST START IQ");
     let frequency_hz = receiver.state().frequency_hz;
     execute_command(
         &mut receiver,
-        &mut sdrplay,
+        radio.as_mut(),
         Command::SetFrequency(frequency_hz),
     )?;
 
     println!(">>> TEST SAMPLE RATE");
     execute_command(
         &mut receiver,
-        &mut sdrplay,
+        radio.as_mut(),
         Command::SetSampleRate(2_000_000),
     )?;
 
@@ -156,43 +199,43 @@ println!(">>> TEST START IQ");
     let bandwidth_hz = receiver.state().bandwidth_hz;
     execute_command(
         &mut receiver,
-        &mut sdrplay,
+        radio.as_mut(),
         Command::SetBandwidth(bandwidth_hz),
     )?;
 
     println!(">>> TEST IF = Zero");
     execute_command(
         &mut receiver,
-        &mut sdrplay,
+        radio.as_mut(),
         Command::SetIfType(IfType::Zero),
     )?;
 
     println!(">>> TEST LO = Auto");
     execute_command(
         &mut receiver,
-        &mut sdrplay,
+        radio.as_mut(),
         Command::SetLoMode(LoMode::Auto),
     )?;
 
     // Démarrage prudent : AGC matériel du RSP actif (pas de surcharge à la
     // première connexion) et pas de gain médian de la bande courante.
     // Les clients rtl_tcp reprennent ensuite la main (0x03 / 0x04 / 0x0D).
-    println!(">>> Gain initial : AGC RSP + pas {}", backend::sdrplay::gain::DEFAULT_GAIN_INDEX);
+    println!(">>> Gain initial : AGC RSP + pas {}", backend::gain::DEFAULT_GAIN_INDEX);
     execute_command(
         &mut receiver,
-        &mut sdrplay,
-        Command::SetGainIndex(backend::sdrplay::gain::DEFAULT_GAIN_INDEX),
+        radio.as_mut(),
+        Command::SetGainIndex(backend::gain::DEFAULT_GAIN_INDEX),
     )?;
     execute_command(
         &mut receiver,
-        &mut sdrplay,
+        radio.as_mut(),
         Command::SetGainMode(GainMode::Automatic),
     )?;
 
 println!(">>> TEST START IQ APRÈS CONFIGURATION");
     execute_command(
         &mut receiver,
-        &mut sdrplay,
+        radio.as_mut(),
         Command::StartIq,
     )?;
 
@@ -231,7 +274,7 @@ println!("{:#?}", receiver.state());
         }
 
         // Acquittement des surcharges ADC (hors callbacks de l'API).
-        sdrplay.service();
+        radio.service();
 
         match rtltcp_commands.try_recv() {
             Ok(command) => {
@@ -257,7 +300,7 @@ println!("{:#?}", receiver.state());
 
                     if let Err(e) = execute_command(
                         &mut receiver,
-                        &mut sdrplay,
+                        radio.as_mut(),
                         core_command,
                     ) {
                         println!(">>> Erreur commande Core RTL-TCP : {}", e);
@@ -278,7 +321,7 @@ println!("{:#?}", receiver.state());
     println!("Fin du test IQ.");
 
     println!("Libération du RSP1B avant fermeture...");
-    Backend::disconnect(&mut sdrplay);
+    radio.disconnect();
 
 println!("Attente de libération USB...");
 std::thread::sleep(std::time::Duration::from_millis(2000));

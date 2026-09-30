@@ -5,6 +5,12 @@ edition = "2021"
 
 build = "build.rs"
 
+[features]
+# Backend SDRplay (nécessite libsdrplay_api). Sans lui : `cargo build --no-default-features`
+# et lancement avec --mock.
+default = ["sdrplay"]
+sdrplay = []
+
 [dependencies]
 anyhow = "1"
 tokio = { version = "1", features = ["full"] }

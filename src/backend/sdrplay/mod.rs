@@ -8,8 +8,7 @@ use crate::backend::Backend;
 
 use crate::core::{Event, IfType, IqBlock, IqReblocker, IqSample, LoMode};
 
-pub mod bandwidth;
-pub mod gain;
+use crate::backend::gain;
 use gain::Band;
 use std::time::Instant;
 
@@ -2426,6 +2425,10 @@ impl Backend for SdrplayBackend {
     }
 	fn take_iq_receiver(&mut self) -> Option<Receiver<IqBlock>> {
         SdrplayBackend::take_iq_receiver(self)
+    }
+
+    fn service(&mut self) {
+        SdrplayBackend::service(self)
     }
 }
 

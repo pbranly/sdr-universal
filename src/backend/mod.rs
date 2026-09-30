@@ -8,6 +8,14 @@ pub trait Backend {
     fn disconnect(&mut self);
     fn apply_event(&mut self, event: &Event) -> Result<()>;
     fn take_iq_receiver(&mut self) -> Option<Receiver<IqBlock>>;
+
+    /// Tâches périodiques hors callbacks (acquittements, messages de surcharge...).
+    fn service(&mut self) {}
 }
 
+pub mod bandwidth;
+pub mod gain;
+pub mod mock;
+
+#[cfg(feature = "sdrplay")]
 pub mod sdrplay;
