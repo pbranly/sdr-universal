@@ -1,27 +1,7 @@
-# Build .deb packages for amd64 and arm64 and publish a GitHub Release.
-#
-# Triggers:
-#   - workflow_dispatch : you choose the version in the UI
-#   - push of a tag      : v1.2.3  (version taken from the tag)
-#
-# The binary is linked against libsdrplay_api. The .deb does NOT ship the
-# proprietary SDRplay library; the end user must install the SDRplay API 3.x
-# (install.sh from sdrplay.com) before running the package.
-
 name: Release .deb
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Version to release (e.g. 0.1.1) — without the 'v' prefix"
-        required: true
-        type: string
-      create_tag:
-        description: "Also create and push git tag v<version>"
-        required: false
-        type: boolean
-        default: true
   push:
     tags:
       - "v*"
@@ -29,13 +9,11 @@ on:
 permissions:
   contents: write
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
   build-deb:
     name: Build .deb (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+
     strategy:
       fail-fast: false
       matrix:
@@ -43,156 +21,253 @@ jobs:
           - arch: amd64
             runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
+
           - arch: arm64
             runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Resolve version
-        id: ver
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            V="${{ inputs.version }}"
-          else
-            # tag v1.2.3 → 1.2.3
-            V="${GITHUB_REF_NAME#v}"
-          fi
-          if ! echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z]+)*$'; then
-            echo "Invalid version: $V (expected semver, e.g. 0.1.1)"
-            exit 1
-          fi
-          echo "version=$V" >> "$GITHUB_OUTPUT"
-          echo "Resolved version: $V"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
 
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.arch }}
+      - name: Get package version
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+
+          if [ -z "$VERSION" ]; then
+            echo "ERROR: unable to determine package version"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Package version: $VERSION"
 
       - name: Install packaging tools
+        shell: bash
         run: |
+          set -euo pipefail
+
           sudo apt-get update
           sudo apt-get install -y dpkg-dev fakeroot
 
       - name: Install SDRplay API (for linking)
+        shell: bash
         run: |
           set -e
-          # Non-interactive install of the official API (shared library + headers).
-          # ACCEPTLICENSE=1 skips the interactive licence prompt.
-          curl -fsSL https://www.sdrplay.com/software/install.sh -o /tmp/sdrplay-install.sh
-          # Some versions of the installer also accept NOTSUPPORTED=1 on non-Ubuntu LTS.
-          sudo ACCEPTLICENSE=1 bash /tmp/sdrplay-install.sh || {
-            echo "::warning::SDRplay installer failed or is unavailable in CI."
+
+          echo "Installing SDRplay API..."
+
+          if curl -fsSL https://www.sdrplay.com/software/install.sh \
+              -o /tmp/sdrplay-install.sh; then
+
+            if sudo ACCEPTLICENSE=1 bash /tmp/sdrplay-install.sh; then
+              echo "SDRplay API installer completed."
+            else
+              echo "::warning::SDRplay installer failed or is unavailable in CI."
+              echo "::warning::Building with --no-default-features (mock backend only)."
+              echo "MOCK_ONLY=1" >> "$GITHUB_ENV"
+            fi
+
+          else
+            echo "::warning::Unable to download SDRplay installer."
             echo "::warning::Building with --no-default-features (mock backend only)."
             echo "MOCK_ONLY=1" >> "$GITHUB_ENV"
-          }
-          # Make the library visible to the linker
+          fi
+
           if [ -f /usr/local/lib/libsdrplay_api.so ]; then
             sudo ldconfig
+
+            echo "SDRplay library:"
             ls -la /usr/local/lib/libsdrplay_api* || true
+
+            echo "SDRplay header:"
             ls -la /usr/local/include/sdrplay_api.h || true
+          else
+            echo "libsdrplay_api.so not found."
           fi
 
       - name: Set package version in Cargo.toml
+        shell: bash
         run: |
-          # Keep the source of truth in sync for this build
-          sed -i 's/^version = ".*"/version = "${{ steps.ver.outputs.version }}"/' Cargo.toml
+          set -euo pipefail
+
+          sed -i \
+            's/^version = ".*"/version = "${{ steps.ver.outputs.version }}"/' \
+            Cargo.toml
+
+          echo "Cargo.toml version:"
           grep '^version' Cargo.toml
 
       - name: Build release binary
+        shell: bash
         run: |
+          set -euxo pipefail
+
+          echo "Target: ${{ matrix.target }}"
+          echo "Architecture: ${{ matrix.arch }}"
+          echo "MOCK_ONLY=${MOCK_ONLY:-0}"
+
           if [ "${MOCK_ONLY:-0}" = "1" ]; then
-            cargo build --release --no-default-features --target ${{ matrix.target }}
+            cargo build \
+              --release \
+              --no-default-features \
+              --target "${{ matrix.target }}"
           else
-            cargo build --release --target ${{ matrix.target }}
+            cargo build \
+              --release \
+              --target "${{ matrix.target }}"
           fi
-          ls -la target/${{ matrix.target }}/release/sdr-universal
+
+          BIN="target/${{ matrix.target }}/release/sdr-universal"
+
+          echo "Checking binary:"
+          ls -la "$BIN"
+          file "$BIN"
 
       - name: Build .deb package
+        shell: bash
         run: |
-      set -euxo pipefail
+          set -euxo pipefail
+
           VERSION="${{ steps.ver.outputs.version }}"
           ARCH="${{ matrix.arch }}"
-          BIN="target/${{ matrix.target }}/release/sdr-universal"
+          TARGET="${{ matrix.target }}"
+
+          BIN="target/${TARGET}/release/sdr-universal"
           PKG_DIR="packaging/deb-root"
+          DEB_NAME="sdr-universal_${VERSION}_${ARCH}.deb"
+
+          echo "========================================"
+          echo "Building Debian package"
+          echo "VERSION = ${VERSION}"
+          echo "ARCH    = ${ARCH}"
+          echo "TARGET  = ${TARGET}"
+          echo "BIN     = ${BIN}"
+          echo "PKG_DIR = ${PKG_DIR}"
+          echo "DEB     = ${DEB_NAME}"
+          echo "========================================"
+
+          echo "Checking required files..."
+
+          test -f "$BIN"
+          test -f LICENSE
+          test -f README.md
+
+          echo "Binary:"
+          ls -la "$BIN"
+
+          echo "LICENSE:"
+          ls -la LICENSE
+
+          echo "README:"
+          ls -la README.md
+
+          echo "Cleaning previous package tree..."
+
           rm -rf "$PKG_DIR"
+
           mkdir -p "$PKG_DIR/DEBIAN"
           mkdir -p "$PKG_DIR/usr/bin"
           mkdir -p "$PKG_DIR/usr/share/doc/sdr-universal"
 
-          install -m 755 "$BIN" "$PKG_DIR/usr/bin/sdr-universal"
-          cp LICENSE "$PKG_DIR/usr/share/doc/sdr-universal/copyright"
-          cp README.md "$PKG_DIR/usr/share/doc/sdr-universal/"
+          echo "Installing binary..."
 
-          # Runtime dependency note: the proprietary libsdrplay_api is NOT
-          # redistributed. User must install SDRplay API 3.x separately.
+          install -m 755 \
+            "$BIN" \
+            "$PKG_DIR/usr/bin/sdr-universal"
+
+          echo "Installing documentation..."
+
+          cp LICENSE \
+            "$PKG_DIR/usr/share/doc/sdr-universal/copyright"
+
+          cp README.md \
+            "$PKG_DIR/usr/share/doc/sdr-universal/"
+
           DEPENDS="libc6"
-          if [ "${MOCK_ONLY:-0}" != "1" ]; then
-            # Soft recommendation only — package still installs without it
-            RECOMMENDS=""
-          fi
 
           cat > "$PKG_DIR/DEBIAN/control" << EOF
-          Package: sdr-universal
-          Version: ${VERSION}
-          Section: hamradio
-          Priority: optional
-          Architecture: ${ARCH}
-          Maintainer: pbranly <https://github.com/pbranly>
-          Depends: ${DEPENDS}
-          Homepage: https://github.com/pbranly/sdr-universal
-          Description: rtl_tcp gateway for SDRplay RSP1B
-           Exposes an SDRplay RSP1B as an rtl_tcp server so that software
-           written for RTL-SDR (e.g. AbracaDABra) can use the RSP with
-           correct per-band gain, RF level and bandwidth selection.
-           .
-           Requires the SDRplay API 3.x (libsdrplay_api) installed from
-           https://www.sdrplay.com/software/install.sh and the service
-           sdrplay_apiService running.
-          EOF
-          # Strip leading spaces from the indented heredoc
-          sed -i 's/^[[:space:]]*//' "$PKG_DIR/DEBIAN/control"
-          # Re-indent Description continuation lines (must start with a space)
-          sed -i '/^Description:/,/^$/ s/^Requires:/ Requires:/' "$PKG_DIR/DEBIAN/control" || true
-          sed -i '/^Description:/,/^$/ s/^Exposes:/ Exposes:/' "$PKG_DIR/DEBIAN/control" || true
-          sed -i '/^Description:/,/^$/ s/^written:/ written:/' "$PKG_DIR/DEBIAN/control" || true
-          sed -i '/^Description:/,/^$/ s/^correct:/ correct:/' "$PKG_DIR/DEBIAN/control" || true
-          sed -i '/^Description:/,/^$/ s/^\.$/ ./' "$PKG_DIR/DEBIAN/control" || true
-          sed -i '/^Description:/,/^$/ s/^https:/ https:/' "$PKG_DIR/DEBIAN/control" || true
-          sed -i '/^Description:/,/^$/ s/^sdrplay_apiService/ sdrplay_apiService/' "$PKG_DIR/DEBIAN/control" || true
+Package: sdr-universal
+Version: ${VERSION}
+Section: hamradio
+Priority: optional
+Architecture: ${ARCH}
+Maintainer: pbranly <https://github.com/pbranly>
+Depends: ${DEPENDS}
+Homepage: https://github.com/pbranly/sdr-universal
+Description: rtl_tcp gateway for SDRplay RSP1B
+ Exposes an SDRplay RSP1B as an rtl_tcp server so that software
+ written for RTL-SDR (e.g. AbracaDABra) can use the RSP with
+ correct per-band gain, RF level and bandwidth selection.
+ .
+ Requires the SDRplay API 3.x (libsdrplay_api) installed from
+ https://www.sdrplay.com/software/install.sh and the service
+ sdrplay_apiService running.
+EOF
+
+          echo "Debian control file:"
+          cat "$PKG_DIR/DEBIAN/control"
 
           cat > "$PKG_DIR/DEBIAN/postinst" << 'POSTINST'
-          #!/bin/sh
-          set -e
-          if ! ldconfig -p 2>/dev/null | grep -q libsdrplay_api; then
-            echo "sdr-universal: warning: libsdrplay_api not found."
-            echo "  Install the SDRplay API 3.x:"
-            echo "  curl -fsSL https://www.sdrplay.com/software/install.sh | sudo bash"
-            echo "  Then ensure sdrplay_apiService is running."
-          fi
-          exit 0
-          POSTINST
-          sed -i 's/^[[:space:]]*//' "$PKG_DIR/DEBIAN/postinst"
+#!/bin/sh
+set -e
+
+if ! ldconfig -p 2>/dev/null | grep -q libsdrplay_api; then
+    echo "sdr-universal: warning: libsdrplay_api not found."
+    echo "  Install the SDRplay API 3.x:"
+    echo "  curl -fsSL https://www.sdrplay.com/software/install.sh | sudo bash"
+    echo "  Then ensure sdrplay_apiService is running."
+fi
+
+exit 0
+POSTINST
+
           chmod 755 "$PKG_DIR/DEBIAN/postinst"
 
-          DEB_NAME="sdr-universal_${VERSION}_${ARCH}.deb"
-          fakeroot dpkg-deb --build "$PKG_DIR" "packaging/${DEB_NAME}"
+          echo "Package tree:"
+          find "$PKG_DIR" -type f -o -type d | sort
+
+          mkdir -p packaging
+
+          echo "Building .deb..."
+
+          fakeroot dpkg-deb \
+            --build \
+            "$PKG_DIR" \
+            "packaging/${DEB_NAME}"
+
+          echo "========================================"
+          echo "dpkg-deb information"
+          echo "========================================"
+
           dpkg-deb -I "packaging/${DEB_NAME}"
+
+          echo "========================================"
+          echo "dpkg-deb contents"
+          echo "========================================"
+
           dpkg-deb -c "packaging/${DEB_NAME}"
-          echo "Built packaging/${DEB_NAME}"
+
+          echo "========================================"
+          echo "Package successfully built:"
+          ls -lh "packaging/${DEB_NAME}"
+          echo "========================================"
 
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sdr-universal_${{ steps.ver.outputs.version }}_${{ matrix.arch }}
+          name: sdr-universal-${{ matrix.arch }}
           path: packaging/sdr-universal_*.deb
           if-no-files-found: error
 
@@ -200,73 +275,31 @@ jobs:
     name: Create GitHub Release
     needs: build-deb
     runs-on: ubuntu-24.04
+
     steps:
-      - name: Checkout (for tag creation)
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Resolve version
-        id: ver
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            V="${{ inputs.version }}"
-          else
-            V="${GITHUB_REF_NAME#v}"
-          fi
-          echo "version=$V" >> "$GITHUB_OUTPUT"
-          echo "tag=v$V" >> "$GITHUB_OUTPUT"
-
-      - name: Download all .deb artifacts
+      - name: Download amd64 artifact
         uses: actions/download-artifact@v4
         with:
-          path: dist
-          pattern: sdr-universal_*
-          merge-multiple: true
+          name: sdr-universal-amd64
+          path: release
 
-      - name: List packages
+      - name: Download arm64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sdr-universal-arm64
+          path: release
+
+      - name: List release files
+        shell: bash
         run: |
-          ls -la dist/
-          for f in dist/*.deb; do
-            echo "=== $f ==="
-            dpkg-deb -I "$f" || true
-          done
+          set -euo pipefail
 
-      - name: Create tag if requested
-        if: github.event_name == 'workflow_dispatch' && inputs.create_tag == true
-        run: |
-          TAG="${{ steps.ver.outputs.tag }}"
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists, skipping creation"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git tag -a "$TAG" -m "Release $TAG"
-            git push origin "$TAG"
-          fi
+          echo "Release files:"
+          find release -type f -maxdepth 2 -print -exec ls -lh {} \;
 
-      - name: Create / update GitHub Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.ver.outputs.tag }}
-          name: sdr-universal ${{ steps.ver.outputs.version }}
-          body: |
-            ## sdr-universal ${{ steps.ver.outputs.version }}
-
-            Installable `.deb` packages for **amd64** (Intel/AMD) and **arm64**.
-
-            ### Install
-
-            ```bash
-            # 1. Install the SDRplay API 3.x (required at runtime)
-            curl -fsSL https://www.sdrplay.com/software/install.sh | sudo bash
-
-            # 2. Install this package
-            sudo dpkg -i sdr-universal_${{ steps.ver.outputs.version }}_amd64.deb
-            # or on ARM:
-            sudo dpkg -i sdr-universal_${{ steps.ver.outputs.version }}_arm64.deb
-
-            # 3. Run
-            sdr-universal
-            # or mock mode (no hardware):
-            sdr-universal --mock
+          files: release/*.deb
+          generate_release_notes: true
