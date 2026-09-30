@@ -4,6 +4,7 @@ pub mod event;
 pub mod iq;
 pub mod receiver;
 pub mod state;
+pub mod telemetry;
 pub mod processor;
 pub use processor::IqProcessor;
 

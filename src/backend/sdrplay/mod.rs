@@ -8,6 +8,7 @@ use crate::backend::Backend;
 
 use crate::core::{Event, IfType, IqBlock, IqReblocker, IqSample, LoMode};
 
+pub mod bandwidth;
 pub mod gain;
 use gain::Band;
 use std::time::Instant;
@@ -422,7 +423,7 @@ unsafe extern "C" fn stream_a_callback(
             || (*params).fs_changed != 0
             || reset != 0)
     {
-        println!(
+        vprintln!(
             ">>> SDRplay CALLBACK CHANGE #{} : first={} gr={} rf={} fs={} reset={} num={}",
             callback_count,
             (*params).first_sample_num,
@@ -448,7 +449,7 @@ unsafe extern "C" fn stream_a_callback(
         let rms_i = (sum_i_sq / n).sqrt();
         let rms_q = (sum_q_sq / n).sqrt();
 
-        println!(
+        vprintln!(
             ">>> CALLBACK RAW RMS : I={:.6} Q={:.6}",
             rms_i,
             rms_q
@@ -518,7 +519,7 @@ unsafe extern "C" fn stream_a_callback(
     // thread temps réel de l'API sur la sortie terminal et provoque des pertes
     // de paquets USB : une trace toutes les 2000 callbacks suffit.
     if callback_count % 2000 == 1 {
-        println!(
+        vprintln!(
             ">>> SDRplay IQ callback #{} : {} samples",
             callback_count, num_samples
         );
@@ -611,7 +612,7 @@ unsafe extern "C" fn event_callback(
     params: *mut SdrplayEventParams,
     cb_context: *mut c_void,
 ) {
-    println!(
+    vprintln!(
         "SDRplay event : eventId={} tuner={}",
         event_id,
         tuner
@@ -635,6 +636,9 @@ unsafe extern "C" fn event_callback(
     context
         .curr_gain_milli_db
         .store((gain.curr_gain * 1000.0) as u64, Ordering::Relaxed);
+
+    // Gain total réel (LNA + IF) pour les sorties : niveau RF d'AbracaDABra.
+    crate::core::telemetry::set_total_gain_db(gain.curr_gain);
 }
 
             println!(
@@ -658,6 +662,8 @@ unsafe extern "C" fn event_callback(
             (*params).power_overload_params.power_overload_change_type == 0;
 
         let was = context.overload.swap(detected, Ordering::Relaxed);
+
+        crate::core::telemetry::set_overload(detected);
 
         if detected && !was {
             context.overload_events.fetch_add(1, Ordering::Relaxed);
@@ -822,6 +828,22 @@ impl SdrplayBackend {
                     ">>> BACKEND AGC RTL (0x08) ignoré : enabled={} gain_mode={:?}",
                     enabled, self.gain_mode
                 );
+            }
+
+            Event::BiasTeeChanged(enabled) => {
+                self.set_bias_t(*enabled)?;
+            }
+
+            Event::RfNotchChanged(enabled) => {
+                self.set_rf_notch(*enabled)?;
+            }
+
+            Event::DabNotchChanged(enabled) => {
+                self.set_dab_notch(*enabled)?;
+            }
+
+            Event::PpmChanged(ppm) => {
+                self.set_ppm(*ppm as f64)?;
             }
 
             Event::IqStarted => {
@@ -1385,6 +1407,11 @@ let result = sdrplay_api_SelectDevice(device);
 
             let rx = &mut *(*params).rx_channel_a;
 
+            // Les clients rtl_tcp renvoient la bande passante à chaque
+            // connexion : inutile de reprogrammer le RSP si elle est déjà bonne.
+            if rx.tuner_params.bw_type == bw_type {
+                return Ok(());
+            }
 
             rx.tuner_params.bw_type = bw_type;
 
@@ -1748,6 +1775,143 @@ pub fn set_gain_index(&mut self, index: usize) -> Result<()> {
     // la configuration AGC (l'AGC reprend la main sur gRdB).
     if self.agc_on {
         self.set_agc(true)?;
+    }
+
+    Ok(())
+}
+
+/// Réglage d'un paramètre propre au RSP1A/RSP1B (bias-T, notch, PPM) :
+/// modifie la structure de paramètres, puis envoie l'Update correspondant.
+/// `apply` renvoie `true` si la valeur a réellement changé : sinon aucun
+/// Update n'est envoyé (les clients rtl_tcp renvoient ces commandes à chaque
+/// connexion, même à leur valeur par défaut).
+fn update_rsp1_setting(
+    &mut self,
+    label: &str,
+    reason: c_int,
+    apply: impl FnOnce(&mut SdrplayDevParams, &mut SdrplayRxChannelParams) -> bool,
+) -> Result<bool> {
+    if !self.connected {
+        return Err(anyhow!("SDRplay non connecté"));
+    }
+
+    if !self.device_selected {
+        return Err(anyhow!("Aucun périphérique SDRplay sélectionné"));
+    }
+
+    let device = self.selected_device.ok_or_else(|| {
+        anyhow!("Périphérique SDRplay sélectionné introuvable")
+    })?;
+
+    unsafe {
+        let mut params: *mut SdrplayDeviceParams = std::ptr::null_mut();
+
+        let result = sdrplay_api_GetDeviceParams(device.dev, &mut params);
+
+        if result != 0 {
+            return Err(anyhow!("sdrplay_api_GetDeviceParams a échoué : {}", result));
+        }
+
+        if params.is_null()
+            || (*params).dev_params.is_null()
+            || (*params).rx_channel_a.is_null()
+        {
+            return Err(anyhow!("Paramètres du périphérique indisponibles"));
+        }
+
+        let dev = &mut *(*params).dev_params;
+        let rx = &mut *(*params).rx_channel_a;
+
+        if !apply(dev, rx) {
+            return Ok(false);
+        }
+
+        // Avant sdrplay_api_Init, la structure sera lue à l'initialisation :
+        // pas d'Update possible ni nécessaire.
+        if self.initialized {
+            const TUNER_A: c_int = 1;
+            const EXT1_NONE: c_int = 0;
+
+            let result = sdrplay_api_Update(device.dev, TUNER_A, reason, EXT1_NONE);
+
+            if result != 0 {
+                return Err(anyhow!("sdrplay_api_Update({}) a échoué : {}", label, result));
+            }
+        }
+    }
+
+    Ok(true)
+}
+
+pub fn set_bias_t(&mut self, enabled: bool) -> Result<()> {
+    // sdrplay_api_Update_Rsp1a_BiasTControl
+    let changed = self.update_rsp1_setting("Bias-T", 0x0000_0010, |_, rx| {
+        let value = enabled as u8;
+        let changed = rx.rsp1a_tuner_params.bias_t_enable != value;
+        rx.rsp1a_tuner_params.bias_t_enable = value;
+        changed
+    })?;
+
+    if changed {
+        println!(">>> Bias-T : {}", if enabled { "activé (alimentation antenne)" } else { "désactivé" });
+    }
+
+    Ok(())
+}
+
+pub fn set_rf_notch(&mut self, enabled: bool) -> Result<()> {
+    // sdrplay_api_Update_Rsp1a_RfNotchControl : filtre réjecteur FM (88-108 MHz)
+    let changed = self.update_rsp1_setting("RF notch (FM)", 0x0000_0020, |dev, _| {
+        let value = enabled as u8;
+        let changed = dev.rsp1a_params.rf_notch_enable != value;
+        dev.rsp1a_params.rf_notch_enable = value;
+        changed
+    })?;
+
+    if changed {
+        println!(">>> RF notch (FM) : {}", if enabled { "activé" } else { "désactivé" });
+    }
+
+    Ok(())
+}
+
+pub fn set_dab_notch(&mut self, enabled: bool) -> Result<()> {
+    // sdrplay_api_Update_Rsp1a_RfDabNotchControl : filtre réjecteur DAB (bande III)
+    if enabled && self.band == Band::Band3 {
+        println!(
+            ">>> ATTENTION : le notch DAB atténue la bande III (174-240 MHz) : \
+             la réception DAB sera dégradée"
+        );
+    }
+
+    let changed = self.update_rsp1_setting("DAB notch", 0x0000_0040, |dev, _| {
+        let value = enabled as u8;
+        let changed = dev.rsp1a_params.rf_dab_notch_enable != value;
+        dev.rsp1a_params.rf_dab_notch_enable = value;
+        changed
+    })?;
+
+    if changed {
+        println!(">>> DAB notch : {}", if enabled { "activé" } else { "désactivé" });
+    }
+
+    Ok(())
+}
+
+pub fn set_ppm(&mut self, ppm: f64) -> Result<()> {
+    if !ppm.is_finite() || ppm.abs() > 1000.0 {
+        return Err(anyhow!("Correction PPM invalide : {}", ppm));
+    }
+
+    // sdrplay_api_Update_Dev_Ppm
+    let changed = self.update_rsp1_setting("PPM", 0x0000_0002, |dev, _| {
+        let changed = (dev.ppm - ppm).abs() > 1e-9;
+        dev.ppm = ppm;
+        changed
+    })?;
+
+    if changed {
+        println!(">>> Correction fréquence : {:.3} ppm", ppm);
     }
 
     Ok(())

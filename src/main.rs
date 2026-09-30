@@ -1,3 +1,18 @@
+/// Traces détaillées (événements API, statistiques IQ, commandes brutes).
+/// Activées par `--verbose` ou la variable d'environnement SDR_VERBOSE=1.
+/// Les lignes utiles au diagnostic (GAIN, SURCHARGE, erreurs...) restent
+/// toujours affichées.
+pub static VERBOSE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+macro_rules! vprintln {
+    ($($arg:tt)*) => {
+        if $crate::VERBOSE.load(std::sync::atomic::Ordering::Relaxed) {
+            println!($($arg)*);
+        }
+    };
+}
+
 mod backend;
 mod core;
 mod output;
@@ -36,6 +51,12 @@ fn execute_command(receiver: &mut Receiver, backend: &mut dyn Backend, command: 
 }
 
 fn main() -> Result<()> {
+    if std::env::args().any(|a| a == "--verbose" || a == "-v")
+        || std::env::var("SDR_VERBOSE").map(|v| v == "1").unwrap_or(false)
+    {
+        VERBOSE.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
     println!("=================================");
     println!(" SDR Universal");
     println!(" Test Core -> SDRplay");
@@ -82,6 +103,10 @@ println!(">>> TEST START IQ");
 
     let (rtltcp_tx, rtltcp_commands) =
         RtltcpSink::start_server("0.0.0.0:1234");
+
+    // Port de contrôle (rtl_tcp + 1) : gain réel du RSP pour le niveau RF
+    // d'AbracaDABra.
+    output::control::start_server("0.0.0.0:1235");
 
     let requested_sample_rate = Arc::new(AtomicU32::new(2_000_000));
 
@@ -210,7 +235,7 @@ println!("{:#?}", receiver.state());
 
         match rtltcp_commands.try_recv() {
             Ok(command) => {
-                println!(">>> CORE reçoit RTL-TCP : {:?}", command);
+                vprintln!(">>> CORE reçoit RTL-TCP : {:?}", command);
 
                 if let output::rtltcp::RtltcpCommand::SetSampleRate(rate) = command {
                     requested_sample_rate.store(rate, Ordering::Relaxed);
@@ -228,7 +253,7 @@ println!("{:#?}", receiver.state());
                 }
 
                 if let Some(core_command) = command.to_core_command() {
-                    println!(">>> Command Core : {:?}", core_command);
+                    vprintln!(">>> Command Core : {:?}", core_command);
 
                     if let Err(e) = execute_command(
                         &mut receiver,

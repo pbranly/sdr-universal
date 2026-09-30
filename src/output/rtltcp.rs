@@ -17,6 +17,12 @@ pub enum RtltcpCommand {
     SetGain(u32),
     SetGainIndex(u32),
     SetAgc(bool),
+    /// 0x05 : correction de fréquence en ppm (entier signé).
+    SetPpm(i32),
+    /// 0x0E : bias-T.
+    SetBiasTee(bool),
+    /// 0x40 : bande passante en Hz (extension utilisée par AbracaDABra).
+    SetBandwidth(u32),
     Unknown(u8, u32),
 }
 
@@ -29,6 +35,9 @@ impl RtltcpCommand {
             0x04 => Self::SetGain(value),
             0x0D => Self::SetGainIndex(value),
             0x08 => Self::SetAgc(value != 0),
+            0x05 => Self::SetPpm(value as i32),
+            0x0E => Self::SetBiasTee(value != 0),
+            0x40 => Self::SetBandwidth(value),
             _ => Self::Unknown(command, value),
         }
     }
@@ -63,6 +72,22 @@ impl RtltcpCommand {
 
             Self::SetAgc(value) => {
                 Some(Command::SetAgc(value))
+            }
+
+            Self::SetPpm(value) => {
+                Some(Command::SetPpm(value as f32))
+            }
+
+            Self::SetBiasTee(value) => {
+                Some(Command::SetBiasTee(value))
+            }
+
+            Self::SetBandwidth(value) => {
+                // Le RSP n'a que quelques largeurs de filtre : on prend la
+                // plus proche par excès (1,53 MHz d'AbracaDABra -> 1,536 MHz).
+                Some(Command::SetBandwidth(
+                    crate::backend::sdrplay::bandwidth::snap_hz(value),
+                ))
             }
 
             Self::Unknown(_, _) => None,
@@ -177,14 +202,14 @@ impl RtltcpSink {
         }
 
         if debug_count < 3 && output.len() >= 8 {
-            println!(
+            vprintln!(
                 ">>> RTL-TCP INPUT : I/Q=({:.4}, {:.4}) facteur={:.1}",
                 block.samples[0].i,
                 block.samples[0].q,
                 gain
             );
 
-            println!(
+            vprintln!(
                 ">>> RTL-TCP OUTPUT : {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
                 output[0],
                 output[1],
@@ -484,7 +509,7 @@ let recv_count =
     RECV_DEBUG_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
 if recv_count % 100 == 0 {
-    println!(
+    vprintln!(
         ">>> RTLTCP RECV #{} : len={} first={:02x} {:02x} {:02x} {:02x} | non7f={}",
         recv_count,
         data.len(),
@@ -633,7 +658,7 @@ impl IqSink for RtltcpSink {
                     .sqrt()
             };
 
-            println!(
+            vprintln!(
                 ">>> RTL IQ #{} | seq={} | freq={} Hz | input={} Hz | output={} Hz | samples={} | bytes={} | RMSout=({:.4},{:.4})",
                 self.blocks_processed,
                 block.sequence,
@@ -646,7 +671,7 @@ impl IqSink for RtltcpSink {
                 resampled_q_rms
             );
 
-            println!(
+            vprintln!(
                 "    I: min={:.4} max={:.4} mean={:.4} rms={:.4}",
                 i_min,
                 i_max,
@@ -654,7 +679,7 @@ impl IqSink for RtltcpSink {
                 i_rms
             );
 
-            println!(
+            vprintln!(
                 "    Q: min={:.4} max={:.4} mean={:.4} rms={:.4}",
                 q_min,
                 q_max,
@@ -662,7 +687,7 @@ impl IqSink for RtltcpSink {
                 q_rms
             );
 
-            println!(
+            vprintln!(
                 "    RTL: min={} max={} non7f={}/{}",
                 rtl_iq.iter().copied().min().unwrap_or(0),
                 rtl_iq.iter().copied().max().unwrap_or(0),
@@ -670,7 +695,7 @@ impl IqSink for RtltcpSink {
                 rtl_iq.len()
             );
 
-            println!(
+            vprintln!(
                 "    bytes: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
                 rtl_iq.get(0).copied().unwrap_or(0),
                 rtl_iq.get(1).copied().unwrap_or(0),
