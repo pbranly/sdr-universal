@@ -6,7 +6,7 @@
 //! paramètres, `LNAstate` et `gRdB` (gain reduction de l'étage IF, 20..=59 dB).
 //! La signification d'un `LNAstate` DÉPEND DE LA BANDE (spécification API v3.15,
 //! chapitre 5, « Gain Reduction Tables ») :
-//!   * 0-50 MHz (RSP1B)   : 7 états (0..=6)
+//!   * moins de 60 MHz    : 7 états (0..=6)
 //!   * 60-420 MHz         : 10 états (0..=9)
 //!   * 420-1000 MHz       : 10 états (0..=9), atténuations différentes
 //!   * 1000-2000 MHz      : 9 états (0..=8)
@@ -17,9 +17,10 @@
 //! que dans sa bande. Ici : 29 pas de gain (comme la liste R820T attendue par les
 //! clients rtl_tcp), avec une table PAR BANDE.
 //!
-//! Origine des valeurs : tables RSP1B de SDRplay `RSPTCPServer` (rsp_tcp.c,
-//! licence GPL v2+), bornes de bandes identiques. Index 0 = gain minimal,
-//! index 28 = gain maximal (LNAstate 0, gRdB 20).
+//! Origine des valeurs : tables RSP1B de SDRplay `RSPTCPServer` (rsp_tcp.c :
+//! en-tête GNU GPL version 2 ou ultérieure, dépôt sous GPL-3.0), bornes de
+//! bandes identiques. Index 0 = gain minimal, index 28 = gain maximal
+//! (LNAstate 0, gRdB 20).
 
 /// Nombre de pas de gain exposés aux clients rtl_tcp.
 pub const GAIN_STEPS: usize = 29;
