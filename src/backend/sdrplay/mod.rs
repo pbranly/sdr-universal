@@ -4,6 +4,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
+use libloading::Library;
+use std::sync::OnceLock;
 use crate::backend::Backend;
 
 use crate::core::{Event, IfType, IqBlock, IqReblocker, IqSample, LoMode};
@@ -342,49 +344,228 @@ const _: () = {
     assert!(std::mem::size_of::<SdrplayCallbackFns>() == 24);
 };
 
-#[link(name = "sdrplay_api")]
-unsafe extern "C" {
-    fn sdrplay_api_Open() -> c_int;
-
-    fn sdrplay_api_Close() -> c_int;
-
-    fn sdrplay_api_ApiVersion(api_ver: *mut f32) -> c_int;
-
-    fn sdrplay_api_LockDeviceApi() -> c_int;
-
-    fn sdrplay_api_UnlockDeviceApi() -> c_int;
-
-    fn sdrplay_api_GetDevices(
-        devices: *mut SdrplayDevice,
-        num_devs: *mut u32,
-        max_devs: u32,
+type SdrplayApiOpen =
+    unsafe extern "C" fn() -> c_int;
+type SdrplayApiClose =
+    unsafe extern "C" fn() -> c_int;
+type SdrplayApiApiVersion =
+    unsafe extern "C" fn(*mut f32) -> c_int;
+type SdrplayApiLockDeviceApi =
+    unsafe extern "C" fn() -> c_int;
+type SdrplayApiUnlockDeviceApi =
+    unsafe extern "C" fn() -> c_int;
+type SdrplayApiGetDevices =
+    unsafe extern "C" fn(*mut SdrplayDevice, *mut u32, u32) -> c_int;
+type SdrplayApiDisableHeartbeat =
+    unsafe extern "C" fn() -> c_int;
+type SdrplayApiSelectDevice =
+    unsafe extern "C" fn(*mut SdrplayDevice) -> c_int;
+type SdrplayApiReleaseDevice =
+    unsafe extern "C" fn(*mut c_void) -> c_int;
+type SdrplayApiGetDeviceParams =
+    unsafe extern "C" fn(*mut c_void, *mut *mut SdrplayDeviceParams) -> c_int;
+type SdrplayApiInit =
+    unsafe extern "C" fn(
+        *mut c_void,
+        *mut SdrplayCallbackFns,
+        *mut c_void,
     ) -> c_int;
+type SdrplayApiUninit =
+    unsafe extern "C" fn(*mut c_void) -> c_int;
+type SdrplayApiUpdate =
+    unsafe extern "C" fn(*mut c_void, c_int, c_int, c_int) -> c_int;
 
-    fn sdrplay_api_DisableHeartbeat() -> c_int;
+struct SdrplayApi {
+    _library: Library,
 
-    fn sdrplay_api_SelectDevice(device: *mut SdrplayDevice) -> c_int;
+    open: SdrplayApiOpen,
+    close: SdrplayApiClose,
+    api_version: SdrplayApiApiVersion,
+    lock_device_api: SdrplayApiLockDeviceApi,
+    unlock_device_api: SdrplayApiUnlockDeviceApi,
+    get_devices: SdrplayApiGetDevices,
+    disable_heartbeat: SdrplayApiDisableHeartbeat,
+    select_device: SdrplayApiSelectDevice,
+    release_device: SdrplayApiReleaseDevice,
+    get_device_params: SdrplayApiGetDeviceParams,
+    init: SdrplayApiInit,
+    uninit: SdrplayApiUninit,
+    update: SdrplayApiUpdate,
+}
 
-    fn sdrplay_api_ReleaseDevice(device: *mut c_void) -> c_int;
+static SDRPLAY_API: OnceLock<SdrplayApi> = OnceLock::new();
 
-    fn sdrplay_api_GetDeviceParams(
-        dev: *mut c_void,
-        device_params: *mut *mut SdrplayDeviceParams,
-    ) -> c_int;
+fn load_sdrplay_api() -> Result<()> {
+    if SDRPLAY_API.get().is_some() {
+        return Ok(());
+    }
 
-    fn sdrplay_api_Init(
-        dev: *mut c_void,
-        callback_fns: *mut SdrplayCallbackFns,
-        cb_context: *mut c_void,
-    ) -> c_int;
+    let library = unsafe {
+        Library::new("libsdrplay_api.so")
+            .or_else(|_| Library::new("/usr/local/lib/libsdrplay_api.so"))
+            .map_err(|err| {
+                anyhow!(
+                    "Impossible de charger libsdrplay_api.so : {}",
+                    err
+                )
+            })?
+    };
 
-    fn sdrplay_api_Uninit(dev: *mut c_void) -> c_int;
+    unsafe {
+        let open = *library.get::<SdrplayApiOpen>(b"sdrplay_api_Open\0")?;
+        let close = *library.get::<SdrplayApiClose>(b"sdrplay_api_Close\0")?;
+        let api_version =
+            *library.get::<SdrplayApiApiVersion>(b"sdrplay_api_ApiVersion\0")?;
+        let lock_device_api =
+            *library.get::<SdrplayApiLockDeviceApi>(b"sdrplay_api_LockDeviceApi\0")?;
+        let unlock_device_api =
+            *library.get::<SdrplayApiUnlockDeviceApi>(b"sdrplay_api_UnlockDeviceApi\0")?;
+        let get_devices =
+            *library.get::<SdrplayApiGetDevices>(b"sdrplay_api_GetDevices\0")?;
+        let disable_heartbeat =
+            *library.get::<SdrplayApiDisableHeartbeat>(b"sdrplay_api_DisableHeartbeat\0")?;
+        let select_device =
+            *library.get::<SdrplayApiSelectDevice>(b"sdrplay_api_SelectDevice\0")?;
+        let release_device =
+            *library.get::<SdrplayApiReleaseDevice>(b"sdrplay_api_ReleaseDevice\0")?;
+        let get_device_params =
+            *library.get::<SdrplayApiGetDeviceParams>(b"sdrplay_api_GetDeviceParams\0")?;
+        let init =
+            *library.get::<SdrplayApiInit>(b"sdrplay_api_Init\0")?;
+        let uninit =
+            *library.get::<SdrplayApiUninit>(b"sdrplay_api_Uninit\0")?;
+        let update =
+            *library.get::<SdrplayApiUpdate>(b"sdrplay_api_Update\0")?;
 
-    fn sdrplay_api_Update(
-        dev: *mut c_void,
-        tuner: c_int,
-        reason_for_update: c_int,
-        ext1_reason_for_update: c_int,
-    ) -> c_int;
+        let api = SdrplayApi {
+            _library: library,
+
+            open,
+            close,
+            api_version,
+            lock_device_api,
+            unlock_device_api,
+            get_devices,
+            disable_heartbeat,
+            select_device,
+            release_device,
+            get_device_params,
+            init,
+            uninit,
+            update,
+        };
+
+        SDRPLAY_API
+            .set(api)
+            .map_err(|_| anyhow!("API SDRplay déjà chargée"))?;
+    }
+
+    println!(">>> SDRplay API chargée dynamiquement");
+
+    Ok(())
+}
+
+#[inline]
+unsafe fn sdrplay_api_Open() -> c_int {
+    (SDRPLAY_API.get().expect("SDRplay API non chargée").open)()
+}
+
+#[inline]
+unsafe fn sdrplay_api_Close() -> c_int {
+    (SDRPLAY_API.get().expect("SDRplay API non chargée").close)()
+}
+
+#[inline]
+unsafe fn sdrplay_api_ApiVersion(api_ver: *mut f32) -> c_int {
+    (SDRPLAY_API.get().expect("SDRplay API non chargée").api_version)(api_ver)
+}
+
+#[inline]
+unsafe fn sdrplay_api_LockDeviceApi() -> c_int {
+    (SDRPLAY_API.get().expect("SDRplay API non chargée").lock_device_api)()
+}
+
+#[inline]
+unsafe fn sdrplay_api_UnlockDeviceApi() -> c_int {
+    (SDRPLAY_API.get().expect("SDRplay API non chargée").unlock_device_api)()
+}
+
+#[inline]
+unsafe fn sdrplay_api_GetDevices(
+    devices: *mut SdrplayDevice,
+    num_devs: *mut u32,
+    max_devs: u32,
+) -> c_int {
+    (SDRPLAY_API.get().expect("SDRplay API non chargée").get_devices)(
+        devices,
+        num_devs,
+        max_devs,
+    )
+}
+
+#[inline]
+unsafe fn sdrplay_api_DisableHeartbeat() -> c_int {
+    (SDRPLAY_API
+        .get()
+        .expect("SDRplay API non chargée")
+        .disable_heartbeat)()
+}
+
+#[inline]
+unsafe fn sdrplay_api_SelectDevice(device: *mut SdrplayDevice) -> c_int {
+    (SDRPLAY_API.get().expect("SDRplay API non chargée").select_device)(device)
+}
+
+#[inline]
+unsafe fn sdrplay_api_ReleaseDevice(device: *mut c_void) -> c_int {
+    (SDRPLAY_API
+        .get()
+        .expect("SDRplay API non chargée")
+        .release_device)(device)
+}
+
+#[inline]
+unsafe fn sdrplay_api_GetDeviceParams(
+    dev: *mut c_void,
+    device_params: *mut *mut SdrplayDeviceParams,
+) -> c_int {
+    (SDRPLAY_API
+        .get()
+        .expect("SDRplay API non chargée")
+        .get_device_params)(dev, device_params)
+}
+
+#[inline]
+unsafe fn sdrplay_api_Init(
+    dev: *mut c_void,
+    callback_fns: *mut SdrplayCallbackFns,
+    cb_context: *mut c_void,
+) -> c_int {
+    (SDRPLAY_API.get().expect("SDRplay API non chargée").init)(
+        dev,
+        callback_fns,
+        cb_context,
+    )
+}
+
+#[inline]
+unsafe fn sdrplay_api_Uninit(dev: *mut c_void) -> c_int {
+    (SDRPLAY_API.get().expect("SDRplay API non chargée").uninit)(dev)
+}
+
+#[inline]
+unsafe fn sdrplay_api_Update(
+    dev: *mut c_void,
+    tuner: c_int,
+    reason_for_update: c_int,
+    ext1_reason_for_update: c_int,
+) -> c_int {
+    (SDRPLAY_API.get().expect("SDRplay API non chargée").update)(
+        dev,
+        tuner,
+        reason_for_update,
+        ext1_reason_for_update,
+    )
 }
 
 fn timestamp_now() -> u64 {
@@ -867,6 +1048,8 @@ impl SdrplayBackend {
     }
 
     pub fn connect(&mut self) -> Result<()> {
+        load_sdrplay_api()?;
+
         unsafe {
             let result = sdrplay_api_Open();
 
