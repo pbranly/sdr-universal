@@ -42,20 +42,35 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.target }}
 
-      - name: Get package version
+      - name: Get package version from Git tag
         id: ver
         shell: bash
         run: |
           set -euo pipefail
 
-          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="${{ inputs.tag }}"
+          fi
 
-          if [ -z "$VERSION" ]; then
-            echo "ERROR: unable to determine package version"
+          if [ -z "$TAG" ]; then
+            echo "ERROR: no Git tag specified"
             exit 1
           fi
 
+          VERSION="${TAG#v}"
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "ERROR: invalid tag/version: $TAG"
+            echo "Expected format: v1.2.3"
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          echo "Git tag: $TAG"
           echo "Package version: $VERSION"
 
       - name: Install packaging tools
