@@ -66,42 +66,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y dpkg-dev fakeroot
 
-      - name: Install SDRplay API (for linking)
-        shell: bash
-        run: |
-          set -e
-
-          echo "Installing SDRplay API..."
-
-          if curl -fsSL https://www.sdrplay.com/software/install.sh \
-              -o /tmp/sdrplay-install.sh; then
-
-            if sudo ACCEPTLICENSE=1 bash /tmp/sdrplay-install.sh; then
-              echo "SDRplay API installer completed."
-            else
-              echo "::warning::SDRplay installer failed or is unavailable in CI."
-              echo "::warning::Building with --no-default-features (mock backend only)."
-              echo "MOCK_ONLY=1" >> "$GITHUB_ENV"
-            fi
-
-          else
-            echo "::warning::Unable to download SDRplay installer."
-            echo "::warning::Building with --no-default-features (mock backend only)."
-            echo "MOCK_ONLY=1" >> "$GITHUB_ENV"
-          fi
-
-          if [ -f /usr/local/lib/libsdrplay_api.so ]; then
-            sudo ldconfig
-
-            echo "SDRplay library:"
-            ls -la /usr/local/lib/libsdrplay_api* || true
-
-            echo "SDRplay header:"
-            ls -la /usr/local/include/sdrplay_api.h || true
-          else
-            echo "libsdrplay_api.so not found."
-          fi
-
       - name: Set package version in Cargo.toml
         shell: bash
         run: |
@@ -121,24 +85,24 @@ jobs:
 
           echo "Target: ${{ matrix.target }}"
           echo "Architecture: ${{ matrix.arch }}"
-          echo "MOCK_ONLY=${MOCK_ONLY:-0}"
 
-          if [ "${MOCK_ONLY:-0}" = "1" ]; then
-            cargo build \
-              --release \
-              --no-default-features \
-              --target "${{ matrix.target }}"
-          else
-            cargo build \
-              --release \
-              --target "${{ matrix.target }}"
-          fi
+          cargo build \
+            --release \
+            --target "${{ matrix.target }}"
 
           BIN="target/${{ matrix.target }}/release/sdr-universal"
 
           echo "Checking binary:"
           ls -la "$BIN"
           file "$BIN"
+
+          echo "Checking SDRplay dynamic dependency:"
+          if ldd "$BIN" 2>/dev/null | grep -qi sdrplay; then
+            echo "::error::Binary is unexpectedly linked against SDRplay API"
+            exit 1
+          fi
+
+          echo "OK: no static SDRplay dependency in binary"
 
       - name: Build .deb package
         shell: bash
