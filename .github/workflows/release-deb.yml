@@ -2,6 +2,11 @@ name: Release .deb
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag à publier (ex. v1.2.3) — laisser vide pour ne pas créer de release"
+        required: false
+        type: string
   push:
     tags:
       - "v*"
@@ -274,7 +279,7 @@ jobs:
   release:
     name: Create GitHub Release
     needs: build-deb
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || inputs.tag != ''
     runs-on: ubuntu-24.04
 
     steps:
@@ -302,5 +307,6 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
           files: release/*.deb
           generate_release_notes: true
