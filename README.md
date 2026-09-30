@@ -124,8 +124,6 @@ Try it without hardware:
   [docs/USAGE.md](docs/USAGE.md)).
 - **Absolute RF level needs a one-time calibration** (see [docs/GAIN.md](docs/GAIN.md)).
 
-## Licensing note
-
 ## License
 
 This project is licensed under the **GNU General Public License v3.0 or later**
