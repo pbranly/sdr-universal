@@ -34,7 +34,7 @@ jobs:
     steps:
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -270,7 +270,7 @@ jobs:
           echo "========================================"
 
       - name: Upload .deb artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sdr-universal-${{ matrix.arch }}
           path: packaging/sdr-universal_*.deb
@@ -285,13 +285,13 @@ jobs:
     steps:
 
       - name: Download amd64 artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: sdr-universal-amd64
           path: release
 
       - name: Download arm64 artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: sdr-universal-arm64
           path: release
