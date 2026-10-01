@@ -1,6 +1,6 @@
 [package]
 name = "sdr-universal"
-version = "0.1.0"
+version = "0.0.3"
 edition = "2021"
 license = "GPL-3.0-or-later"
 description = "Gateway that exposes an SDRplay RSP1B as an rtl_tcp server"
@@ -11,8 +11,8 @@ keywords = ["sdr", "sdrplay", "rtl-tcp", "dab", "rsp1b"]
 build = "build.rs"
 
 [features]
-# Backend SDRplay (nécessite libsdrplay_api). Sans lui : `cargo build --no-default-features`
-# et lancement avec --mock.
+# Backend SDRplay. L'API SDRplay (libsdrplay_api) est chargée à l'exécution :
+# rien à installer pour compiler. Sans cette feature, seul --mock est disponible.
 default = ["sdrplay"]
 sdrplay = []
 
@@ -21,3 +21,7 @@ anyhow = "1"
 tokio = { version = "1", features = ["full"] }
 ctrlc = "3.4"
 libloading = "0.8"
+
+[profile.release]
+# Binaire sans symboles de débogage : environ 0,8 Mo au lieu de 14 Mo.
+strip = true

@@ -26,8 +26,17 @@ after a short pause (about two seconds) that lets the USB device be released.
 | `1234` (`--port N`) | rtl_tcp server: header, IQ stream, commands |
 | `1235` (`N + 1`) | Control port: real gain and overload state, used for the RF level |
 
-Both listen on `0.0.0.0` (all interfaces) and have **no authentication**: anyone who
-can reach them can retune the receiver. Restrict access with a firewall.
+By default both listen on `0.0.0.0` (all interfaces) and have **no authentication**:
+anyone who can reach them can retune the receiver, and the gateway prints a warning at
+start-up. Limit exposure with `--bind` (or `SDR_BIND`):
+
+```bash
+sdr-universal --bind 127.0.0.1        # only clients on this machine
+sdr-universal --bind 192.168.1.10     # only through this network interface
+```
+
+and/or a firewall. Invalid values for `--bind`, `--port` or `--mock-level` stop the
+gateway at start-up with an explicit message instead of being ignored.
 
 The rtl_tcp server serves **one client at a time**; another client that connects
 waits until the first one disconnects. A client can disconnect and reconnect at any

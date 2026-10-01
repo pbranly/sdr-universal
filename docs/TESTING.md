@@ -14,7 +14,7 @@ machine, with no receiver and no SDRplay library:
 - it emits the same log lines as the real backend, so the same `grep` filters work.
 
 ```bash
-cargo build --release --no-default-features
+cargo build --release
 ./target/release/sdr-universal --mock --port 2234 --mock-level -70
 ```
 
@@ -28,8 +28,7 @@ bands. The mock validates the gateway's logic, not the receiver's RF behaviour.
 ## Automated tests
 
 ```bash
-cargo test --no-default-features   # without the SDRplay API
-cargo test                         # with it (the receiver is not used)
+cargo test      # no receiver and no SDRplay API needed
 ```
 
 They take about 20 seconds.
@@ -50,6 +49,12 @@ like AbracaDABra would:
 | `client_can_reconnect` | Three successive connections, each with a header and data |
 | `invalid_commands_do_not_disturb_the_gateway` | Out-of-range frequency, unknown opcode, out-of-range step: errors logged, stream continues |
 | `ctrl_c_stops_cleanly` | SIGINT gives a clean exit with status 0 |
+| `bind_option_limits_the_listening_address` | `--bind 127.0.0.1`: address in the log, both ports reachable, no all-interfaces warning |
+| `default_bind_warns_about_all_interfaces` | Default start-up warns that all interfaces are exposed |
+| `invalid_option_values_are_rejected_at_start_up` | Bad `--bind`, `--port` (not a number, out of range, 65535) and `--mock-level` stop at once with a message naming the option |
+| `version_flag_reports_the_package_version` | `--version` / `-V` print one line with the package version and target |
+| `help_lists_the_options` | `--help` / `-h` list the options |
+| `missing_sdrplay_api_fails_cleanly` | Without the SDRplay API: non-zero exit, readable message, no panic (never touches a real RSP) |
 
 The tests catch real regressions: reintroducing an old bug (wrong RF-level scaling, or
 the old tuner header) makes the corresponding tests fail.

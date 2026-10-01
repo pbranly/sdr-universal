@@ -47,6 +47,61 @@ fn arg_value(name: &str) -> Option<String> {
         .and_then(|i| args.get(i + 1).cloned())
 }
 
+/// Valeur d'une option (ligne de commande, sinon variable d'environnement) :
+/// absente -> `None` ; présente mais invalide -> erreur explicite (au lieu
+/// d'être ignorée en silence).
+fn option_value<T>(name: &str, env_var: Option<&str>) -> Result<Option<T>>
+where
+    T: std::str::FromStr,
+    T::Err: std::fmt::Display,
+{
+    let raw = arg_value(name).or_else(|| {
+        env_var
+            .and_then(|var| std::env::var(var).ok())
+            .filter(|value| !value.is_empty())
+    });
+
+    match raw {
+        None => Ok(None),
+        Some(text) => text.parse::<T>().map(Some).map_err(|err| {
+            anyhow::anyhow!("{} : valeur invalide « {} » ({})", name, text, err)
+        }),
+    }
+}
+
+/// « sdr-universal 0.0.3 (git v0.0.3, x86_64-unknown-linux-gnu) »
+fn version_line() -> String {
+    format!(
+        "{} {} (git {}, {})",
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+        env!("SDR_UNIVERSAL_GIT"),
+        env!("SDR_UNIVERSAL_TARGET"),
+    )
+}
+
+fn print_help() {
+    println!("{}", version_line());
+    println!("{}", env!("CARGO_PKG_DESCRIPTION"));
+    println!();
+    println!("USAGE:");
+    println!("    sdr-universal [OPTIONS]");
+    println!();
+    println!("OPTIONS:");
+    println!("    --port N           rtl_tcp port (default 1234); the control port is N+1");
+    println!("    --bind ADDR        listen address (default 0.0.0.0, all interfaces; SDR_BIND)");
+    println!("    -v, --verbose      detailed traces (same as SDR_VERBOSE=1)");
+    println!("        --mock         simulated RSP1B, no hardware (same as SDR_MOCK=1)");
+    println!("        --mock-level D simulated antenna level in dBm (default -75, SDR_MOCK_LEVEL_DBM)");
+    println!("    -V, --version      print the version and exit");
+    println!("    -h, --help         print this help and exit");
+    println!();
+    println!("ENVIRONMENT:");
+    println!("    SDRPLAY_API_LIB    full path of libsdrplay_api.so (default: system search)");
+    println!();
+    println!("Documentation: {}", env!("CARGO_PKG_REPOSITORY"));
+}
+
 /// Backend réel (SDRplay) ou factice (--mock / SDR_MOCK=1, sans matériel).
 fn create_backend(mock: bool, mock_level_dbm: f64) -> Result<Box<dyn Backend>> {
     if mock {
@@ -56,6 +111,9 @@ fn create_backend(mock: bool, mock_level_dbm: f64) -> Result<Box<dyn Backend>> {
 
     #[cfg(feature = "sdrplay")]
     {
+        // Échec immédiat et lisible si l'API SDRplay n'est pas installée :
+        // la bibliothèque est chargée à l'exécution, pas à la compilation.
+        backend::sdrplay::ensure_api_loaded()?;
         Ok(Box::new(SdrplayBackend::new()))
     }
 
@@ -81,6 +139,16 @@ fn execute_command(receiver: &mut Receiver, backend: &mut dyn Backend, command: 
 }
 
 fn main() -> Result<()> {
+    if std::env::args().skip(1).any(|a| a == "--version" || a == "-V") {
+        println!("{}", version_line());
+        return Ok(());
+    }
+
+    if std::env::args().skip(1).any(|a| a == "--help" || a == "-h") {
+        print_help();
+        return Ok(());
+    }
+
     if std::env::args().any(|a| a == "--verbose" || a == "-v")
         || std::env::var("SDR_VERBOSE").map(|v| v == "1").unwrap_or(false)
     {
@@ -88,8 +156,8 @@ fn main() -> Result<()> {
     }
 
     println!("=================================");
-    println!(" SDR Universal");
-    println!(" Test Core -> SDRplay");
+    println!(" SDR Universal {}", env!("CARGO_PKG_VERSION"));
+    println!(" rtl_tcp gateway for SDRplay");
     println!("=================================");
     println!();
 
@@ -126,14 +194,33 @@ println!(">>> TEST START IQ");
     let use_mock = std::env::args().any(|a| a == "--mock")
         || std::env::var("SDR_MOCK").map(|v| v == "1").unwrap_or(false);
 
-    let mock_level_dbm: f64 = arg_value("--mock-level")
-        .or_else(|| std::env::var("SDR_MOCK_LEVEL_DBM").ok())
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(-75.0);
+    let mock_level_dbm: f64 =
+        option_value("--mock-level", Some("SDR_MOCK_LEVEL_DBM"))?.unwrap_or(-75.0);
 
-    let rtltcp_port: u16 = arg_value("--port")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(1234);
+    if !mock_level_dbm.is_finite() {
+        return Err(anyhow::anyhow!(
+            "--mock-level : valeur invalide « {} » (nombre fini attendu)",
+            mock_level_dbm
+        ));
+    }
+
+    let rtltcp_port: u16 = option_value("--port", None)?.unwrap_or(1234);
+
+    let control_port = rtltcp_port.checked_add(1).ok_or_else(|| {
+        anyhow::anyhow!(
+            "--port {} : le port de contrôle (port + 1) dépasserait 65535",
+            rtltcp_port
+        )
+    })?;
+
+    // Adresse d'écoute : toutes les interfaces par défaut (comportement
+    // historique), ou une adresse précise, par exemple 127.0.0.1 pour limiter
+    // l'accès à cette machine.
+    let bind_ip: std::net::IpAddr = option_value("--bind", Some("SDR_BIND"))?
+        .unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED));
+
+    let rtltcp_addr = std::net::SocketAddr::new(bind_ip, rtltcp_port).to_string();
+    let control_addr = std::net::SocketAddr::new(bind_ip, control_port).to_string();
 
     let mut radio = create_backend(use_mock, mock_level_dbm)?;
 
@@ -145,11 +232,18 @@ println!(">>> TEST START IQ");
         .expect("Receiver IQ indisponible");
 
     let (rtltcp_tx, rtltcp_commands) =
-        RtltcpSink::start_server(&format!("0.0.0.0:{}", rtltcp_port));
+        RtltcpSink::start_server(&rtltcp_addr);
 
     // Port de contrôle (rtl_tcp + 1) : gain réel du RSP pour le niveau RF
     // d'AbracaDABra.
-    output::control::start_server(&format!("0.0.0.0:{}", rtltcp_port + 1));
+    output::control::start_server(&control_addr);
+
+    if bind_ip.is_unspecified() {
+        println!(
+            ">>> ATTENTION : écoute sur toutes les interfaces réseau, sans authentification ; \
+             --bind 127.0.0.1 limite l'accès à cette machine."
+        );
+    }
 
     let requested_sample_rate = Arc::new(AtomicU32::new(2_000_000));
 

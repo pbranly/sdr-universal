@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag à publier (ex. v1.2.3) — laisser vide pour ne pas créer de release"
+        description: "Existing tag to build and publish (e.g. v1.2.3). Leave empty to only build test packages, without a release."
         required: false
         type: string
   push:
@@ -12,7 +12,7 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-deb:
@@ -32,9 +32,13 @@ jobs:
             target: aarch64-unknown-linux-gnu
 
     steps:
-
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          # Build exactly the tag that is being published (manual runs included).
+          ref: ${{ inputs.tag || github.ref }}
+          # Full history and tags: the version shown by `sdr-universal --version`.
+          fetch-depth: 0
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -42,217 +46,124 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.target }}
 
-      - name: Get package version from Git tag
+      - name: Determine version
         id: ver
         shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
 
-          if [ "${{ github.event_name }}" = "push" ]; then
-            TAG="${GITHUB_REF_NAME}"
+          if [ "$EVENT" = "push" ]; then
+            TAG="$REF_NAME"
           else
-            TAG="${{ inputs.tag }}"
+            TAG="$INPUT_TAG"
           fi
 
-          if [ -z "$TAG" ]; then
-            echo "ERROR: no Git tag specified"
-            exit 1
+          if [ -n "$TAG" ]; then
+            CARGO_VERSION="${TAG#v}"
+            if [[ ! "$CARGO_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Invalid tag '$TAG' (expected vMAJOR.MINOR.PATCH, e.g. v1.2.3)"
+              exit 1
+            fi
+            VERSION="$CARGO_VERSION"
+          else
+            # Manual run without a tag: test package, never published.
+            CARGO_VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+            VERSION="${CARGO_VERSION}+ci${GITHUB_RUN_NUMBER}"
           fi
 
-          VERSION="${TAG#v}"
-
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "ERROR: invalid tag/version: $TAG"
-            echo "Expected format: v1.2.3"
-            exit 1
-          fi
-
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "cargo_version=$CARGO_VERSION" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Package version: $VERSION (Cargo version: $CARGO_VERSION)"
 
-          echo "Git tag: $TAG"
-          echo "Package version: $VERSION"
-
-      - name: Install packaging tools
+      - name: Set version in Cargo.toml
         shell: bash
+        env:
+          CARGO_VERSION: ${{ steps.ver.outputs.cargo_version }}
         run: |
           set -euo pipefail
+          # Only the first `version = "..."` line: the package version.
+          sed -i '0,/^version = ".*"/s//version = "'"$CARGO_VERSION"'"/' Cargo.toml
+          grep -m1 '^version' Cargo.toml
 
-          sudo apt-get update
-          sudo apt-get install -y dpkg-dev fakeroot
-
-      - name: Set package version in Cargo.toml
+      - name: Run tests (simulated receiver, no hardware)
         shell: bash
-        run: |
-          set -euo pipefail
-
-          sed -i \
-            's/^version = ".*"/version = "${{ steps.ver.outputs.version }}"/' \
-            Cargo.toml
-
-          echo "Cargo.toml version:"
-          grep '^version' Cargo.toml
+        run: cargo test --release
 
       - name: Build release binary
         shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          CARGO_VERSION: ${{ steps.ver.outputs.cargo_version }}
         run: |
           set -euxo pipefail
 
-          echo "Target: ${{ matrix.target }}"
-          echo "Architecture: ${{ matrix.arch }}"
+          export SDR_UNIVERSAL_GIT="$(git describe --tags --always)"
+          cargo build --release --target "$TARGET"
 
-          cargo build \
-            --release \
-            --target "${{ matrix.target }}"
-
-          BIN="target/${{ matrix.target }}/release/sdr-universal"
-
-          echo "Checking binary:"
-          ls -la "$BIN"
+          BIN="target/${TARGET}/release/sdr-universal"
           file "$BIN"
 
-          echo "Checking SDRplay dynamic dependency:"
-          if ldd "$BIN" 2>/dev/null | grep -qi sdrplay; then
-            echo "::error::Binary is unexpectedly linked against SDRplay API"
+          # The SDRplay API is proprietary and loaded at run time: the binary
+          # must not depend on it.
+          if ldd "$BIN" | grep -qi sdrplay; then
+            echo "::error::The binary is linked against the SDRplay API"
             exit 1
           fi
 
-          echo "OK: no static SDRplay dependency in binary"
+          VERSION_LINE="$("$BIN" --version)"
+          echo "$VERSION_LINE"
+          case "$VERSION_LINE" in
+            "sdr-universal ${CARGO_VERSION} "*) ;;
+            *) echo "::error::--version does not report ${CARGO_VERSION}"; exit 1 ;;
+          esac
 
       - name: Build .deb package
+        shell: bash
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euxo pipefail
+          bash packaging/build-deb.sh "$VERSION" "$ARCH" "target/${TARGET}/release/sdr-universal" target/deb
+          dpkg-deb -I target/deb/*.deb
+          dpkg-deb -c target/deb/*.deb
+
+      - name: Lint package
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y lintian
+          lintian --fail-on error target/deb/*.deb
+
+      - name: Smoke test (install, run, remove)
         shell: bash
         run: |
           set -euxo pipefail
 
-          VERSION="${{ steps.ver.outputs.version }}"
-          ARCH="${{ matrix.arch }}"
-          TARGET="${{ matrix.target }}"
+          sudo apt-get install -y ./target/deb/*.deb
+          sdr-universal --version
 
-          BIN="target/${TARGET}/release/sdr-universal"
-          PKG_DIR="packaging/deb-root"
-          DEB_NAME="sdr-universal_${VERSION}_${ARCH}.deb"
+          # Simulated receiver: no hardware and no SDRplay API needed.
+          sdr-universal --mock --port 26000 > mock.log 2>&1 &
+          sleep 5
+          grep -q "MODE FACTICE" mock.log
+          pkill -INT -x sdr-universal
+          sleep 4
+          grep -q "arrêt propre" mock.log
 
-          echo "========================================"
-          echo "Building Debian package"
-          echo "VERSION = ${VERSION}"
-          echo "ARCH    = ${ARCH}"
-          echo "TARGET  = ${TARGET}"
-          echo "BIN     = ${BIN}"
-          echo "PKG_DIR = ${PKG_DIR}"
-          echo "DEB     = ${DEB_NAME}"
-          echo "========================================"
-
-          echo "Checking required files..."
-
-          test -f "$BIN"
-          test -f LICENSE
-          test -f README.md
-
-          echo "Binary:"
-          ls -la "$BIN"
-
-          echo "LICENSE:"
-          ls -la LICENSE
-
-          echo "README:"
-          ls -la README.md
-
-          echo "Cleaning previous package tree..."
-
-          rm -rf "$PKG_DIR"
-
-          mkdir -p "$PKG_DIR/DEBIAN"
-          mkdir -p "$PKG_DIR/usr/bin"
-          mkdir -p "$PKG_DIR/usr/share/doc/sdr-universal"
-
-          echo "Installing binary..."
-
-          install -m 755 \
-            "$BIN" \
-            "$PKG_DIR/usr/bin/sdr-universal"
-
-          echo "Installing documentation..."
-
-          cp LICENSE \
-            "$PKG_DIR/usr/share/doc/sdr-universal/copyright"
-
-          cp README.md \
-            "$PKG_DIR/usr/share/doc/sdr-universal/"
-
-          DEPENDS="libc6"
-
-          cat > "$PKG_DIR/DEBIAN/control" << EOF
-          Package: sdr-universal
-          Version: ${VERSION}
-          Section: hamradio
-          Priority: optional
-          Architecture: ${ARCH}
-          Maintainer: pbranly <https://github.com/pbranly>
-          Depends: ${DEPENDS}
-          Homepage: https://github.com/pbranly/sdr-universal
-          Description: rtl_tcp gateway for SDRplay RSP1B
-           Exposes an SDRplay RSP1B as an rtl_tcp server so that software
-           written for RTL-SDR (e.g. AbracaDABra) can use the RSP with
-           correct per-band gain, RF level and bandwidth selection.
-           .
-           Requires the SDRplay API 3.x (libsdrplay_api) installed from
-           https://www.sdrplay.com/software/install.sh and the service
-           sdrplay_apiService running.
-          EOF
-
-          echo "Debian control file:"
-          cat "$PKG_DIR/DEBIAN/control"
-
-          cat > "$PKG_DIR/DEBIAN/postinst" << 'POSTINST'
-          #!/bin/sh
-          set -e
-
-          if ! ldconfig -p 2>/dev/null | grep -q libsdrplay_api; then
-              echo "sdr-universal: warning: libsdrplay_api not found."
-              echo "  Install the SDRplay API 3.x:"
-              echo "  curl -fsSL https://www.sdrplay.com/software/install.sh | sudo bash"
-              echo "  Then ensure sdrplay_apiService is running."
-          fi
-
-          exit 0
-          POSTINST
-
-          chmod 755 "$PKG_DIR/DEBIAN/postinst"
-
-          echo "Package tree:"
-          find "$PKG_DIR" -type f -o -type d | sort
-
-          mkdir -p packaging
-
-          echo "Building .deb..."
-
-          fakeroot dpkg-deb \
-            --build \
-            "$PKG_DIR" \
-            "packaging/${DEB_NAME}"
-
-          echo "========================================"
-          echo "dpkg-deb information"
-          echo "========================================"
-
-          dpkg-deb -I "packaging/${DEB_NAME}"
-
-          echo "========================================"
-          echo "dpkg-deb contents"
-          echo "========================================"
-
-          dpkg-deb -c "packaging/${DEB_NAME}"
-
-          echo "========================================"
-          echo "Package successfully built:"
-          ls -lh "packaging/${DEB_NAME}"
-          echo "========================================"
+          sudo apt-get remove -y sdr-universal
 
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v6
         with:
           name: sdr-universal-${{ matrix.arch }}
-          path: packaging/sdr-universal_*.deb
+          path: target/deb/sdr-universal_*.deb
           if-no-files-found: error
 
   release:
@@ -260,32 +171,31 @@ jobs:
     needs: build-deb
     if: startsWith(github.ref, 'refs/tags/') || inputs.tag != ''
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
 
     steps:
-
-      - name: Download amd64 artifact
+      - name: Download packages
         uses: actions/download-artifact@v7
         with:
-          name: sdr-universal-amd64
+          pattern: sdr-universal-*
+          merge-multiple: true
           path: release
 
-      - name: Download arm64 artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: sdr-universal-arm64
-          path: release
-
-      - name: List release files
+      - name: Checksums
         shell: bash
         run: |
           set -euo pipefail
-
-          echo "Release files:"
-          find release -maxdepth 2 -type f -print -exec ls -lh {} \;
+          cd release
+          sha256sum ./*.deb | sed 's# \./# #' > SHA256SUMS
+          ls -lh
+          cat SHA256SUMS
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
-          files: release/*.deb
+          files: |
+            release/*.deb
+            release/SHA256SUMS
           generate_release_notes: true

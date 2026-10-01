@@ -395,21 +395,57 @@ struct SdrplayApi {
 
 static SDRPLAY_API: OnceLock<SdrplayApi> = OnceLock::new();
 
+/// Noms essayés, dans l'ordre, pour charger l'API SDRplay. La variable
+/// d'environnement `SDRPLAY_API_LIB` (chemin complet) remplace cette liste :
+/// utile pour un emplacement particulier, et pour les tests.
+fn library_candidates() -> Vec<String> {
+    if let Ok(path) = std::env::var("SDRPLAY_API_LIB") {
+        if !path.is_empty() {
+            return vec![path];
+        }
+    }
+
+    [
+        "libsdrplay_api.so",
+        "libsdrplay_api.so.3",
+        "/usr/local/lib/libsdrplay_api.so",
+        "/usr/local/lib/libsdrplay_api.so.3",
+    ]
+    .iter()
+    .map(|name| name.to_string())
+    .collect()
+}
+
+fn open_library() -> Result<Library> {
+    let mut attempts = Vec::new();
+
+    for name in library_candidates() {
+        match unsafe { Library::new(&name) } {
+            Ok(library) => return Ok(library),
+            Err(err) => attempts.push(format!("  - {} : {}", name, err)),
+        }
+    }
+
+    Err(anyhow!(
+        "API SDRplay introuvable (libsdrplay_api.so). Essais :\n{}\n\
+         Installez l'API SDRplay 3.x (https://www.sdrplay.com/software/install.sh), \
+         indiquez son emplacement avec SDRPLAY_API_LIB, ou utilisez --mock.",
+        attempts.join("\n")
+    ))
+}
+
+/// Charge l'API SDRplay (une seule fois) ; à appeler avant toute utilisation
+/// du backend pour échouer tôt avec un message clair.
+pub fn ensure_api_loaded() -> Result<()> {
+    load_sdrplay_api()
+}
+
 fn load_sdrplay_api() -> Result<()> {
     if SDRPLAY_API.get().is_some() {
         return Ok(());
     }
 
-    let library = unsafe {
-        Library::new("libsdrplay_api.so")
-            .or_else(|_| Library::new("/usr/local/lib/libsdrplay_api.so"))
-            .map_err(|err| {
-                anyhow!(
-                    "Impossible de charger libsdrplay_api.so : {}",
-                    err
-                )
-            })?
-    };
+    let library = open_library()?;
 
     unsafe {
         let open = *library.get::<SdrplayApiOpen>(b"sdrplay_api_Open\0")?;

@@ -18,12 +18,18 @@ the first `RTL-TCP INPUT` line once a client is connected: it must contain
 **`failed to parse lock file … lock file version 4 requires -Znext-lockfile-bump`.**
 Your Cargo is too old for this `Cargo.lock`. Update it (`rustup update`).
 
-**`cannot find -lsdrplay_api` or `libsdrplay_api.so: cannot open shared object file`.**
-Install the SDRplay API with SDRplay's installer, or build without it:
-`cargo build --release --no-default-features` and run with `--mock`. The build looks for
-the library in `/usr/local/lib`.
+**Which version am I running?**
+`sdr-universal --version` prints the version, the git tag or commit it was built from
+and the target, for example `sdr-universal 0.0.3 (git v0.0.3, x86_64-unknown-linux-gnu)`.
 
 ## Start-up
+
+**`API SDRplay introuvable (libsdrplay_api.so)`.**
+The SDRplay API is loaded at run time and was not found. The message lists every
+location tried. Install it with SDRplay's installer
+(<https://www.sdrplay.com/software/install.sh>), point to it with
+`SDRPLAY_API_LIB=/path/to/libsdrplay_api.so`, or use `--mock` to run without a
+receiver.
 
 **The RSP is not found.**
 Check that the SDRplay API service (`sdrplay_apiService`) is running. An RSP is normally

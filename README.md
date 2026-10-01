@@ -39,18 +39,36 @@ It is written in Rust and talks to the receiver through the official SDRplay API
 - **Mock backend** (`--mock`) and an end-to-end test suite that run without any
   hardware or SDRplay library. See [docs/TESTING.md](docs/TESTING.md).
 
-## Requirements
+## Install
 
-- Linux.
-- An **SDRplay RSP1B** and the **SDRplay API 3.x**, installed with SDRplay's
-  installer (`install.sh` from <https://www.sdrplay.com/software/install.sh>). The
-  API service (`sdrplay_apiService`) must be running.
-- The [Rust toolchain](https://rustup.rs) (edition 2021).
+### From a `.deb` package (Debian, Ubuntu, Raspberry Pi OS)
 
-Without a receiver you can still build, run in mock mode and run the tests (see
-below).
+Download the package for your machine from the
+[Releases](https://github.com/pbranly/sdr-universal/releases) page:
 
-## Build
+| Machine | Package |
+|---|---|
+| Intel / AMD 64-bit PC | `sdr-universal_X.Y.Z_amd64.deb` |
+| 64-bit ARM (Raspberry Pi 3/4/5 with a 64-bit OS, other aarch64 boards) | `sdr-universal_X.Y.Z_arm64.deb` |
+
+```bash
+sudo apt install ./sdr-universal_X.Y.Z_amd64.deb
+sdr-universal --version
+```
+
+Packages are built for Debian 12, Ubuntu 22.04, Raspberry Pi OS (Bookworm) and newer
+(glibc 2.34 or later). A `SHA256SUMS` file is published with each release.
+
+**The SDRplay API is not included** (it is proprietary) and is loaded at run time.
+Install it separately with SDRplay's installer
+(<https://www.sdrplay.com/software/install.sh>) and make sure the
+`sdrplay_apiService` service is running. The package prints a reminder when the
+API is missing. Without it you can still run the simulated receiver with `--mock`.
+
+### From source
+
+Requirements: Linux and the [Rust toolchain](https://rustup.rs) (stable). Nothing
+from SDRplay is needed to *build*.
 
 ```bash
 git clone https://github.com/pbranly/sdr-universal.git
@@ -58,14 +76,13 @@ cd sdr-universal
 cargo build --release
 ```
 
-The binary is `target/release/sdr-universal`. It links against
-`libsdrplay_api` in `/usr/local/lib` (where SDRplay's installer puts it).
+The binary is `target/release/sdr-universal`. To *use* a receiver you need an
+**SDRplay RSP1B** and the **SDRplay API 3.x** (see above). To build without the
+SDRplay backend at all (mock only): `cargo build --release --no-default-features`.
 
-To build **without** the SDRplay API (mock backend only):
-
-```bash
-cargo build --release --no-default-features
-```
+The binary looks for `libsdrplay_api.so` with the system's usual search, then in
+`/usr/local/lib` (where SDRplay's installer puts it). Set `SDRPLAY_API_LIB` to a
+full path to use another location.
 
 ## Run
 
@@ -90,14 +107,25 @@ Try it without hardware:
 ./target/release/sdr-universal --mock --port 2234 --mock-level -70
 ```
 
+Check the version you are running:
+
+```bash
+sdr-universal --version
+# sdr-universal 0.0.3 (git v0.0.3, x86_64-unknown-linux-gnu)
+```
+
 ## Command-line options
 
 | Option | Environment variable | Default | Meaning |
 |---|---|---|---|
 | `--port N` | | `1234` | rtl_tcp port. The control port is `N + 1`. |
+| `--bind ADDR` | `SDR_BIND` | `0.0.0.0` | Listen address for both ports. Use `127.0.0.1` to accept only connections from this machine. |
 | `--verbose`, `-v` | `SDR_VERBOSE=1` | off | Detailed traces (API events, IQ statistics, raw commands). |
 | `--mock` | `SDR_MOCK=1` | off | Simulated RSP1B, no hardware. |
 | `--mock-level DBM` | `SDR_MOCK_LEVEL_DBM` | `-75` | Simulated antenna level, in dBm (mock only). |
+| `--version`, `-V` | | | Print the version and exit. |
+| `--help`, `-h` | | | Print a short help and exit. |
+| | `SDRPLAY_API_LIB` | system search | Full path of `libsdrplay_api.so`. |
 
 ## Documentation
 
@@ -108,6 +136,7 @@ Try it without hardware:
 | [docs/PROTOCOL.md](docs/PROTOCOL.md) | rtl_tcp commands and the control-port frame |
 | [docs/TESTING.md](docs/TESTING.md) | Mock backend, automated tests, hardware checklist |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common problems and fixes |
+| [docs/RELEASING.md](docs/RELEASING.md) | How `.deb` packages and releases are built (maintainers) |
 
 ## Known limitations
 
@@ -115,8 +144,9 @@ Try it without hardware:
   checked; the gain tables are the RSP1B's. Other models need their own tables.
 - **One client at a time.** Extra connections wait until the current client
   disconnects.
-- **No authentication and no bind-address option.** Both ports listen on all
-  network interfaces. Use a firewall or run it on a trusted network.
+- **No authentication.** By default both ports listen on all network interfaces, so
+  anyone who can reach them can retune the receiver. Use `--bind 127.0.0.1` when the
+  client runs on the same machine, and a firewall or a trusted network otherwise.
 - **Sample rate.** The RSP runs at the rate the client asks for when the API accepts
   it (for example 2.048 MS/s for DAB). Rates below 2 MS/s are produced by a simple
   linear resampler without an anti-aliasing filter; treat them as best-effort.

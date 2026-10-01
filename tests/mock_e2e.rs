@@ -27,10 +27,15 @@ struct Gateway {
 
 impl Gateway {
     fn start() -> Gateway {
+        Gateway::start_with(&[])
+    }
+
+    fn start_with(extra_args: &[&str]) -> Gateway {
         let port = 21000 + (std::process::id() % 1000) as u16 * 20 + NEXT_PORT.fetch_add(2, Ordering::SeqCst);
 
         let mut child = Command::new(env!("CARGO_BIN_EXE_sdr-universal"))
             .args(["--mock", "--port", &port.to_string(), "--mock-level", &LEVEL_DBM.to_string()])
+            .args(extra_args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -357,4 +362,129 @@ fn ctrl_c_stops_cleanly() {
 
     assert!(exit.success(), "code de sortie {:?}\n{}", exit.code(), gw.dump());
     assert!(gw.wait_log("arrêt propre", Duration::from_secs(1)), "{}", gw.dump());
+}
+
+
+/// Lance la passerelle avec des arguments et attend sa fin (5 s au plus : une
+/// commande qui doit échouer ou s'arrêter tout de suite ne doit jamais rester
+/// en service).
+fn run_cli(args: &[&str], envs: &[(&str, &str)]) -> std::process::Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_sdr-universal"));
+    command.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+
+    let mut child = command.spawn().expect("lancement de la passerelle");
+    let start = Instant::now();
+
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break status;
+        }
+        if start.elapsed() > Duration::from_secs(5) {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("la commande {:?} ne s'est pas arrêtée d'elle-même", args);
+        }
+        thread::sleep(Duration::from_millis(50));
+    };
+
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    child.stdout.take().unwrap().read_to_end(&mut stdout).unwrap();
+    child.stderr.take().unwrap().read_to_end(&mut stderr).unwrap();
+
+    std::process::Output { status, stdout, stderr }
+}
+
+#[test]
+fn version_flag_reports_the_package_version() {
+    for flag in ["--version", "-V"] {
+        let output = run_cli(&[flag], &[]);
+        assert!(output.status.success(), "{}", flag);
+
+        let text = String::from_utf8_lossy(&output.stdout);
+        let expected = format!("sdr-universal {} (git ", env!("CARGO_PKG_VERSION"));
+        assert!(text.starts_with(&expected), "sortie inattendue : {}", text);
+        assert_eq!(text.trim_end().lines().count(), 1, "une seule ligne attendue");
+        assert!(text.contains("-linux-"), "la cible doit figurer dans la version : {}", text);
+    }
+}
+
+#[test]
+fn help_lists_the_options() {
+    for flag in ["--help", "-h"] {
+        let output = run_cli(&[flag], &[]);
+        assert!(output.status.success(), "{}", flag);
+
+        let text = String::from_utf8_lossy(&output.stdout);
+        for needle in ["--port", "--mock", "--mock-level", "--verbose", "--version", "SDRPLAY_API_LIB"] {
+            assert!(text.contains(needle), "{} absent de l'aide :\n{}", needle, text);
+        }
+    }
+}
+
+/// Sans API SDRplay : échec immédiat, code de sortie non nul, message lisible
+/// (et pas de panique). `SDRPLAY_API_LIB` force un chemin inexistant, pour que
+/// le test ne touche jamais à un vrai RSP, même sur une machine où l'API est
+/// installée.
+#[cfg(feature = "sdrplay")]
+#[test]
+fn missing_sdrplay_api_fails_cleanly() {
+    let output = run_cli(&[], &[("SDRPLAY_API_LIB", "/nonexistent/libsdrplay_api.so")]);
+
+    assert!(!output.status.success());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("API SDRplay introuvable"), "{}", stderr);
+    assert!(stderr.contains("--mock"), "le message doit suggérer --mock : {}", stderr);
+    assert!(!stderr.contains("panicked"), "{}", stderr);
+}
+
+#[test]
+fn bind_option_limits_the_listening_address() {
+    let gw = Gateway::start_with(&["--bind", "127.0.0.1"]);
+
+    assert!(
+        gw.log_contains(&format!("127.0.0.1:{}", gw.port)),
+        "adresse d'écoute absente du journal :\n{}",
+        gw.dump()
+    );
+    assert!(
+        !gw.log_contains("toutes les interfaces"),
+        "l'avertissement ne doit apparaître que pour 0.0.0.0 :\n{}",
+        gw.dump()
+    );
+
+    // Les deux ports restent joignables en boucle locale.
+    let client = gw.client();
+    assert_eq!(&client.header[0..4], b"RTL0");
+    let _ = gw.control();
+}
+
+#[test]
+fn default_bind_warns_about_all_interfaces() {
+    let gw = Gateway::start();
+    assert!(gw.log_contains("toutes les interfaces"), "{}", gw.dump());
+}
+
+#[test]
+fn invalid_option_values_are_rejected_at_start_up() {
+    let cases: [(&[&str], &str); 5] = [
+        (&["--mock", "--bind", "not-an-ip"], "--bind"),
+        (&["--mock", "--port", "abc"], "--port"),
+        (&["--mock", "--port", "70000"], "--port"),
+        (&["--mock", "--port", "65535"], "65535"),
+        (&["--mock", "--mock-level", "abc"], "--mock-level"),
+    ];
+
+    for (args, expected) in cases {
+        let output = run_cli(args, &[]);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        assert!(!output.status.success(), "{:?} aurait dû échouer", args);
+        assert!(stderr.contains(expected), "{:?} : {}", args, stderr);
+        assert!(!stderr.contains("panicked"), "{:?} : {}", args, stderr);
+    }
 }

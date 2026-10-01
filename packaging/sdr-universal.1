@@ -1,0 +1,49 @@
+.TH SDR-UNIVERSAL 1 "" "sdr-universal" "User Commands"
+.SH NAME
+sdr-universal \- rtl_tcp gateway for SDRplay RSP receivers
+.SH SYNOPSIS
+.B sdr-universal
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+Exposes an SDRplay RSP1B as an rtl_tcp server, so that software written for
+RTL-SDR dongles (for example AbracaDABra) can use it, with per-band gain
+control, an RF level indication and bandwidth selection.
+.PP
+The rtl_tcp server listens on TCP port 1234 and a control port (used by
+AbracaDABra to compute the RF level) on the next port. By default both listen on
+all network interfaces and have no authentication: use \fB\-\-bind\fR and/or a
+firewall to restrict access.
+.PP
+The SDRplay API 3.x is not part of this package and is loaded at run time.
+Without it, only the simulated receiver (\fB\-\-mock\fR) can be used.
+.SH OPTIONS
+.TP
+.BI \-\-port " N"
+rtl_tcp port (default 1234). The control port is N+1.
+.TP
+.BI \-\-bind " ADDR"
+Listen address for both ports (default 0.0.0.0, all interfaces; same as SDR_BIND).
+Use 127.0.0.1 to accept only connections from the local machine.
+.TP
+.BR \-v ", " \-\-verbose
+Detailed traces (same as SDR_VERBOSE=1).
+.TP
+.B \-\-mock
+Simulated RSP1B, no hardware needed (same as SDR_MOCK=1).
+.TP
+.BI \-\-mock\-level " DBM"
+Simulated antenna level in dBm, default \-75 (same as SDR_MOCK_LEVEL_DBM).
+.TP
+.BR \-V ", " \-\-version
+Print the version and exit.
+.TP
+.BR \-h ", " \-\-help
+Print a short help and exit.
+.SH ENVIRONMENT
+.TP
+.B SDRPLAY_API_LIB
+Full path of libsdrplay_api.so, instead of the default system search.
+.SH SEE ALSO
+/usr/share/doc/sdr-universal/README.md and the other files in that directory.
+.SH AUTHOR
+pbranly, https://github.com/pbranly/sdr-universal
