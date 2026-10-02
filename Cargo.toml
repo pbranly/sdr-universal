@@ -11,8 +11,8 @@ keywords = ["sdr", "sdrplay", "rtl-tcp", "dab", "rsp1b"]
 build = "build.rs"
 
 [features]
-# Backend SDRplay. L'API SDRplay (libsdrplay_api) est chargée à l'exécution :
-# rien à installer pour compiler. Sans cette feature, seul --mock est disponible.
+# SDRplay backend. The SDRplay API (libsdrplay_api) is loaded at run time:
+# nothing to install to build. Without this feature only --mock is available.
 default = ["sdrplay"]
 sdrplay = []
 
@@ -20,8 +20,9 @@ sdrplay = []
 anyhow = "1"
 tokio = { version = "1", features = ["full"] }
 ctrlc = "3.4"
+log = { version = "0.4", features = ["std"] }
 libloading = "0.8"
 
 [profile.release]
-# Binaire sans symboles de débogage : environ 0,8 Mo au lieu de 14 Mo.
+# Binary without debug symbols: about 0.8 MB instead of 14 MB.
 strip = true

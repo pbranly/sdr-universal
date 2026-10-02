@@ -27,6 +27,8 @@ impl Receiver {
         &self.state
     }
 
+    /// Used by the outputs that need to know the receiver's limits (hamlib, ...).
+    #[allow(dead_code)]
     pub fn capabilities(&self) -> &Capabilities {
         &self.capabilities
     }
@@ -35,16 +37,14 @@ impl Receiver {
         match command {
             Command::GetState => Ok(CommandResult::State(self.state.clone())),
 
-            Command::GetCapabilities => {
-                Ok(CommandResult::Capabilities(self.capabilities.clone()))
-            }
+            Command::GetCapabilities => Ok(CommandResult::Capabilities(self.capabilities.clone())),
 
             Command::SetFrequency(frequency_hz) => {
                 if frequency_hz < self.capabilities.frequency_min_hz
                     || frequency_hz > self.capabilities.frequency_max_hz
                 {
                     return Err(anyhow!(
-                        "Fréquence hors limites : {} Hz ({} - {} Hz)",
+                        "Frequency out of range: {} Hz ({} - {} Hz)",
                         frequency_hz,
                         self.capabilities.frequency_min_hz,
                         self.capabilities.frequency_max_hz
@@ -53,14 +53,12 @@ impl Receiver {
 
                 self.state.frequency_hz = frequency_hz;
 
-                Ok(CommandResult::Event(
-                    Event::FrequencyChanged(frequency_hz),
-                ))
+                Ok(CommandResult::Event(Event::FrequencyChanged(frequency_hz)))
             }
 
             Command::SetMode(mode) => {
                 if !self.capabilities.modes.contains(&mode) {
-                    return Err(anyhow!("Mode non supporté : {:?}", mode));
+                    return Err(anyhow!("Unsupported mode: {:?}", mode));
                 }
 
                 self.state.mode = mode;
@@ -70,75 +68,57 @@ impl Receiver {
 
             Command::SetBandwidth(bandwidth_hz) => {
                 if !self.capabilities.bandwidths_hz.contains(&bandwidth_hz) {
-                    return Err(anyhow!(
-                        "Bande passante non supportée : {} Hz",
-                        bandwidth_hz
-                    ));
+                    return Err(anyhow!("Unsupported bandwidth: {} Hz", bandwidth_hz));
                 }
 
                 self.state.bandwidth_hz = bandwidth_hz;
 
-                Ok(CommandResult::Event(
-                    Event::BandwidthChanged(bandwidth_hz),
-                ))
+                Ok(CommandResult::Event(Event::BandwidthChanged(bandwidth_hz)))
             }
 
             Command::SetIfType(if_type) => {
                 if !self.capabilities.if_types.contains(&if_type) {
-                    return Err(anyhow!(
-                        "Type IF non supporté : {:?}",
-                        if_type
-                    ));
+                    return Err(anyhow!("Unsupported IF type: {:?}", if_type));
                 }
 
                 self.state.if_type = if_type;
 
-                Ok(CommandResult::Event(
-                    Event::IfTypeChanged(if_type),
-                ))
+                Ok(CommandResult::Event(Event::IfTypeChanged(if_type)))
             }
 
             Command::SetLoMode(lo_mode) => {
-			println!(">>> CORE SetLoMode reçu : {:?}", lo_mode);
+                log::debug!("SetLoMode received: {:?}", lo_mode);
                 if !self.capabilities.lo_modes.contains(&lo_mode) {
-                    return Err(anyhow!(
-                        "Mode LO non supporté : {:?}",
-                        lo_mode
-                    ));
+                    return Err(anyhow!("Unsupported LO mode: {:?}", lo_mode));
                 }
 
                 self.state.lo_mode = lo_mode;
 
-                Ok(CommandResult::Event(
-                    Event::LoModeChanged(lo_mode),
-                ))
+                Ok(CommandResult::Event(Event::LoModeChanged(lo_mode)))
             }
 
             Command::SetSampleRate(sample_rate) => {
-    const MIN_SAMPLE_RATE: u32 = 2_000_000;  // plancher ADC RSP1B sans décimation
-    const MAX_SAMPLE_RATE: u32 = 10_000_000;
+                const MIN_SAMPLE_RATE: u32 = 2_000_000; // RSP1B ADC floor without decimation
+                const MAX_SAMPLE_RATE: u32 = 10_000_000;
 
-    if sample_rate < MIN_SAMPLE_RATE || sample_rate > MAX_SAMPLE_RATE {
-        return Err(anyhow!(
-            "Sample rate {} Hz hors plage supportée ({}–{} Hz)",
-            sample_rate, MIN_SAMPLE_RATE, MAX_SAMPLE_RATE
-        ));
-    }
-
+                if sample_rate < MIN_SAMPLE_RATE || sample_rate > MAX_SAMPLE_RATE {
+                    return Err(anyhow!(
+                        "Sample rate {} Hz outside the supported range ({}–{} Hz)",
+                        sample_rate,
+                        MIN_SAMPLE_RATE,
+                        MAX_SAMPLE_RATE
+                    ));
+                }
 
                 self.state.sample_rate = sample_rate;
 
-                Ok(CommandResult::Event(
-                    Event::SampleRateChanged(sample_rate),
-                ))
+                Ok(CommandResult::Event(Event::SampleRateChanged(sample_rate)))
             }
 
             Command::SetGain(gain) => {
-                if gain < self.capabilities.gain_min_db
-                    || gain > self.capabilities.gain_max_db
-                {
+                if gain < self.capabilities.gain_min_db || gain > self.capabilities.gain_max_db {
                     return Err(anyhow!(
-                        "Gain hors limites : {:.2} dB ({:.2} - {:.2} dB)",
+                        "Gain out of range: {:.2} dB ({:.2} - {:.2} dB)",
                         gain,
                         self.capabilities.gain_min_db,
                         self.capabilities.gain_max_db
@@ -153,7 +133,7 @@ impl Receiver {
             Command::SetGainIndex(index) => {
                 if index >= self.capabilities.gain_steps {
                     return Err(anyhow!(
-                        "Pas de gain hors limites : {} (0 - {})",
+                        "Gain step out of range: {} (0 - {})",
                         index,
                         self.capabilities.gain_steps - 1
                     ));
@@ -178,17 +158,12 @@ impl Receiver {
 
             Command::SetAntenna(antenna) => {
                 if !self.capabilities.antennas.contains(&antenna) {
-                    return Err(anyhow!(
-                        "Antenne non supportée : {}",
-                        antenna
-                    ));
+                    return Err(anyhow!("Unsupported antenna: {}", antenna));
                 }
 
                 self.state.antenna = Some(antenna.clone());
 
-                Ok(CommandResult::Event(
-                    Event::AntennaChanged(antenna),
-                ))
+                Ok(CommandResult::Event(Event::AntennaChanged(antenna)))
             }
 
             Command::SetPpm(ppm) => {
@@ -199,55 +174,41 @@ impl Receiver {
 
             Command::SetBiasTee(enabled) => {
                 if !self.capabilities.bias_tee {
-                    return Err(anyhow!(
-                        "Le bias-tee n'est pas supporté par ce périphérique"
-                    ));
+                    return Err(anyhow!("Bias-T is not supported by this device"));
                 }
 
                 self.state.bias_tee = enabled;
 
-                Ok(CommandResult::Event(
-                    Event::BiasTeeChanged(enabled),
-                ))
+                Ok(CommandResult::Event(Event::BiasTeeChanged(enabled)))
             }
 
             Command::SetRfNotch(enabled) => {
                 if !self.capabilities.rf_notch {
-                    return Err(anyhow!(
-                        "Le RF notch n'est pas supporté par ce périphérique"
-                    ));
+                    return Err(anyhow!("RF notch is not supported by this device"));
                 }
 
                 self.state.rf_notch = enabled;
 
-                Ok(CommandResult::Event(
-                    Event::RfNotchChanged(enabled),
-                ))
+                Ok(CommandResult::Event(Event::RfNotchChanged(enabled)))
             }
 
             Command::SetDabNotch(enabled) => {
                 if !self.capabilities.dab_notch {
-                    return Err(anyhow!(
-                        "Le DAB notch n'est pas supporté par ce périphérique"
-                    ));
+                    return Err(anyhow!("DAB notch is not supported by this device"));
                 }
 
                 self.state.dab_notch = enabled;
 
-                Ok(CommandResult::Event(
-                    Event::DabNotchChanged(enabled),
-                ))
+                Ok(CommandResult::Event(Event::DabNotchChanged(enabled)))
             }
 
             Command::StartIq => {
                 if !self.capabilities.iq {
-                    return Err(anyhow!(
-                        "Le flux IQ n'est pas supporté par ce périphérique"
-                    ));
+                    return Err(anyhow!("IQ streaming is not supported by this device"));
                 }
 
                 if self.state.streaming {
-                    return Err(anyhow!("Le flux IQ est déjà actif"));
+                    return Err(anyhow!("IQ streaming is already active"));
                 }
 
                 self.state.streaming = true;
@@ -257,7 +218,7 @@ impl Receiver {
 
             Command::StopIq => {
                 if !self.state.streaming {
-                    return Err(anyhow!("Le flux IQ n'est pas actif"));
+                    return Err(anyhow!("IQ streaming is not active"));
                 }
 
                 self.state.streaming = false;

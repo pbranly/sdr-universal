@@ -16,13 +16,13 @@ pub struct ReceiverState {
     pub frequency_hz: u64,
     pub sample_rate: u32,
     pub bandwidth_hz: u32,
-	pub if_type: IfType,
-	pub lo_mode: LoMode,
+    pub if_type: IfType,
+    pub lo_mode: LoMode,
 
     pub mode: ReceiverMode,
 
     pub gain: f32,
-    /// Pas de gain courant (0..=28), voir backend::sdrplay::gain.
+    /// Current gain step (0..=28), see backend::gain.
     pub gain_index: usize,
     pub gain_mode: GainMode,
 
@@ -51,10 +51,10 @@ impl Default for ReceiverState {
             frequency_hz: 200_000_000,
             sample_rate: 2_000_000,
             bandwidth_hz: 200_000,
-			
-			if_type: IfType::Zero,
-			lo_mode: LoMode::Auto,
-			
+
+            if_type: IfType::Zero,
+            lo_mode: LoMode::Auto,
+
             mode: ReceiverMode::Nfm,
 
             gain: 50.0,

@@ -36,25 +36,25 @@ Check that the SDRplay API service (`sdrplay_apiService`) is running. An RSP is 
 used by one application at a time: close SDRuno, SDroxide or any other program that
 holds it, then restart the gateway.
 
-**`RTL-TCP bind … échoué` or the control port is unavailable.**
+**`RTL-TCP bind … failed` or `control port … unavailable`.**
 The port is already in use, possibly by another instance of the gateway. Pick another
 one with `--port N` (the control port is `N + 1`).
 
 ## Reception
 
 **Decoding works with the AGC but stops when the manual gain is raised.**
-The signal saturates the ADC or the 16-bit output. Look for `!!! SURCHARGE ADC` in the
+The signal saturates the ADC or the 16-bit output. Look for `ADC OVERLOAD` in the
 log. Lower the gain, or use the AGC. See [GAIN.md](GAIN.md#overload).
 
 **Nothing changes when the client changes the gain.**
-Check that the client is receiving the tuner header (`RTL-TCP client connecté`) and
-that `>>> GAIN` lines appear when it moves the control. With an empty gain list a
+Check that the client is receiving the tuner header (`RTL-TCP client connected`) and
+that `GAIN:` lines appear when it moves the control. With an empty gain list a
 client sends no gain commands at all; this gateway announces 29 steps to avoid that.
 
 **AbracaDABra shows "RF level: not available".**
 - Enable the control-port option in its RTL-TCP settings.
 - Check that port `1235` (rtl_tcp port + 1) is reachable and not blocked by a firewall;
-  the log should show `Client de contrôle connecté`.
+  the log should show `control client connected`.
 - Use its software AGC or manual gain: no level is shown in hardware-AGC mode.
 
 **The RF level is off by a constant amount.**

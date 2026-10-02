@@ -30,7 +30,7 @@ pub struct Capabilities {
 
     pub gain_min_db: f32,
     pub gain_max_db: f32,
-    /// Nombre de pas de gain exposés (0..gain_steps).
+    /// Number of gain steps exposed (0..gain_steps).
     pub gain_steps: usize,
 
     pub antennas: Vec<String>,
@@ -49,15 +49,9 @@ impl Default for Capabilities {
             frequency_max_hz: 2_000_000_000,
 
             sample_rates: vec![
-                250_000,
-                500_000,
-                1_000_000,
-                2_000_000,
-				2_048_000,   // ajouté : rate standard DAB / rtl_tcp
-                4_000_000,
-                6_000_000,
-                8_000_000,
-                10_000_000,
+                250_000, 500_000, 1_000_000, 2_000_000,
+                2_048_000, // added: standard DAB / rtl_tcp rate
+                4_000_000, 6_000_000, 8_000_000, 10_000_000,
             ],
 
             modes: vec![
@@ -72,14 +66,7 @@ impl Default for Capabilities {
             ],
 
             bandwidths_hz: vec![
-                200_000,
-                300_000,
-                600_000,
-                1_536_000,
-                5_000_000,
-                6_000_000,
-                7_000_000,
-                8_000_000,
+                200_000, 300_000, 600_000, 1_536_000, 5_000_000, 6_000_000, 7_000_000, 8_000_000,
             ],
 
             if_types: vec![
@@ -89,12 +76,7 @@ impl Default for Capabilities {
                 IfType::KHz2048,
             ],
 
-            lo_modes: vec![
-                LoMode::Auto,
-                LoMode::MHz120,
-                LoMode::MHz144,
-                LoMode::MHz168,
-            ],
+            lo_modes: vec![LoMode::Auto, LoMode::MHz120, LoMode::MHz144, LoMode::MHz168],
 
             gain_min_db: 0.0,
             gain_max_db: 59.0,

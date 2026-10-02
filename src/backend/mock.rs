@@ -1,23 +1,23 @@
-//! Backend factice : simule un RSP1B sans matériel (option `--mock`).
+//! Mock backend: simulates an RSP1B without hardware (`--mock` option).
 //!
-//! Il sert à tester la passerelle de bout en bout (protocole rtl_tcp, port de
-//! contrôle, gain par bande, AGC, surcharge, reconnexions, arrêt propre) sur
-//! n'importe quelle machine, sans bibliothèque SDRplay ni RSP branché.
+//! It is used to test the gateway end to end (rtl_tcp protocol, control port,
+//! per-band gain, AGC, overload, reconnections, clean shutdown) on any machine,
+//! with no SDRplay library and no RSP plugged in.
 //!
-//! Modèle radio, volontairement simple mais cohérent avec le reste de la
-//! passerelle :
-//!   * le signal d'antenne est un bruit gaussien (comme un multiplex DAB) dont
-//!     la puissance est fixée par `level_dbm` (-75 dBm par défaut) ;
-//!   * gain total = GAIN_BASE_DB - atténuation LNA - gRdB (valeurs relevées
-//!     sur un RSP1B ; les atténuations LNA par bande sont approchées par la
-//!     table 60-420 MHz : suffisant pour tester la logique de la passerelle,
-//!     mais pas représentatif de la RF réelle, surtout en Am et 420-1000 MHz) ;
-//!   * niveau numérique (dBFS, échelle ±1.0 comme l'API SDRplay) =
-//!     level_dbm + gain total. La constante propre au RSP reste donc nulle, ce
-//!     que suppose aussi le calcul du niveau RF de `output::control_frame` ;
-//!   * l'AGC ramène le niveau vers -30 dBFS en agissant sur gRdB ;
-//!   * au-delà de la pleine échelle, le signal est écrêté et une surcharge est
-//!     signalée.
+//! Radio model, deliberately simple but consistent with the rest of the
+//! gateway:
+//!   * the antenna signal is Gaussian noise (like a DAB multiplex) whose power
+//!     is set by `level_dbm` (-75 dBm by default);
+//!   * total gain = GAIN_BASE_DB - LNA attenuation - gRdB (values observed on
+//!     an RSP1B; LNA attenuations per band are approximated by the 60-420 MHz
+//!     table: enough to test the gateway's logic, but not representative of
+//!     the real RF, especially in Am and 420-1000 MHz);
+//!   * digital level (dBFS, ±1.0 scale like the SDRplay API) =
+//!     level_dbm + total gain. The receiver-specific constant is therefore
+//!     zero, which is also what the RF level computation of
+//!     `output::control_frame` assumes;
+//!   * the AGC drives the level towards -30 dBFS by changing gRdB;
+//!   * above full scale the signal is clipped and an overload is reported.
 
 use anyhow::Result;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,23 +31,23 @@ use crate::backend::gain::{self, Band};
 use crate::backend::Backend;
 use crate::core::{telemetry, Event, GainMode, IqBlock, IqSample};
 
-/// Gain total pour LNAstate 0 et gRdB 0 (relevé : 85,58 dB à gRdB 20).
+/// Total gain for LNAstate 0 and gRdB 0 (observed: 85.58 dB at gRdB 20).
 const GAIN_BASE_DB: f64 = 105.6;
 
-/// Atténuation LNA par état (approximation, table 60-420 MHz).
+/// LNA attenuation per state (approximation, 60-420 MHz table).
 const LNA_GR_DB: [f64; 10] = [0.0, 6.0, 12.0, 18.0, 20.0, 26.0, 32.0, 38.0, 57.0, 62.0];
 
-/// Consigne de l'AGC en dBFS (comme rsp_tcp).
+/// AGC set-point in dBFS (like rsp_tcp).
 const AGC_TARGET_DBFS: f64 = -30.0;
 
-/// Limites de gRdB du RSP1B.
+/// gRdB limits of the RSP1B.
 const GR_MIN: i32 = 20;
 const GR_MAX: i32 = 59;
 
-/// Niveau par composante (I ou Q) au-dessus duquel on signale une surcharge.
+/// Per-component (I or Q) level above which an overload is reported.
 const OVERLOAD_RMS: f64 = 0.30;
 
-/// Largeurs de filtre acceptées par l'API SDRplay (Hz).
+/// Filter widths accepted by the SDRplay API (Hz).
 const SUPPORTED_BANDWIDTHS_HZ: [u32; 8] = [
     200_000, 300_000, 600_000, 1_536_000, 5_000_000, 6_000_000, 7_000_000, 8_000_000,
 ];
@@ -55,18 +55,18 @@ const SUPPORTED_BANDWIDTHS_HZ: [u32; 8] = [
 const BLOCK_SAMPLES: usize = 4096;
 const NOISE_LEN: usize = 1 << 16;
 
-/// Gain total (dB) pour un état LNA et un gRdB.
+/// Total gain (dB) for an LNA state and a gRdB.
 pub fn total_gain_db(lna_state: u8, gr_db: i32) -> f64 {
     let lna = LNA_GR_DB[(lna_state as usize).min(LNA_GR_DB.len() - 1)];
     GAIN_BASE_DB - lna - gr_db as f64
 }
 
-/// Niveau numérique en dBFS pour un niveau d'antenne et un gain total.
+/// Digital level in dBFS for an antenna level and a total gain.
 pub fn dbfs(level_dbm: f64, total_gain_db: f64) -> f64 {
     level_dbm + total_gain_db
 }
 
-/// Un pas d'AGC : ±1 dB de gRdB pour rapprocher le niveau de la consigne.
+/// One AGC step: ±1 dB of gRdB to bring the level closer to the set-point.
 pub fn agc_step(gr_db: i32, level_dbfs: f64) -> i32 {
     if level_dbfs > AGC_TARGET_DBFS + 1.0 {
         (gr_db + 1).min(GR_MAX)
@@ -150,8 +150,8 @@ impl MockBackend {
         let total = total_gain_db(lna_state, gr_db);
         telemetry::set_total_gain_db(total);
 
-        println!(
-            ">>> GAIN : bande={:?} pas={}/{} -> LNA={} gRdB={} | réel LNA={} gRdB={} curr={:.2} dB (AGC={})",
+        log::info!(
+            "GAIN: band={:?} step={}/{} -> LNA={} gRdB={} | actual LNA={} gRdB={} curr={:.2} dB (AGC={})",
             s.band,
             index,
             gain::GAIN_STEPS - 1,
@@ -188,7 +188,7 @@ impl MockBackend {
     }
 }
 
-/// Générateur de bruit gaussien complexe (variance unité par composante).
+/// Complex Gaussian noise generator (unit variance per component).
 fn noise_table() -> Vec<(f32, f32)> {
     let mut state: u64 = 0x9E37_79B9_7F4A_7C15;
     let mut next = move || {
@@ -277,7 +277,7 @@ fn generate(shared: Arc<Mutex<Shared>>, tx: SyncSender<IqBlock>, stop: Arc<Atomi
             Err(TrySendError::Disconnected(_)) => break,
         }
 
-        // Cadence temps réel : un bloc toutes les 4096 / fs secondes.
+        // Real-time pacing: one block every 4096 / fs seconds.
         next_deadline += Duration::from_secs_f64(BLOCK_SAMPLES as f64 / sample_rate.max(1) as f64);
         let now = Instant::now();
 
@@ -292,7 +292,7 @@ fn generate(shared: Arc<Mutex<Shared>>, tx: SyncSender<IqBlock>, stop: Arc<Atomi
 impl Backend for MockBackend {
     fn connect(&mut self) -> Result<()> {
         self.connected = true;
-        println!(">>> Backend FACTICE connecté (aucun matériel, niveau d'antenne simulé)");
+        log::info!("mock backend connected (no hardware, simulated antenna level)");
 
         let s = self.shared.lock().unwrap();
         telemetry::set_total_gain_db(total_gain_db(s.lna_state, s.gr_db));
@@ -324,9 +324,11 @@ impl Backend for MockBackend {
                 };
 
                 if new_band != old_band {
-                    println!(
-                        ">>> Changement de bande {:?} -> {:?} : gain réappliqué (pas {})",
-                        old_band, new_band, index
+                    log::info!(
+                        "Band change {:?} -> {:?}: gain re-applied (step {})",
+                        old_band,
+                        new_band,
+                        index
                     );
                     self.set_gain_index(index)?;
                 }
@@ -344,7 +346,7 @@ impl Backend for MockBackend {
             Event::GainModeChanged(mode) => match mode {
                 GainMode::Automatic => {
                     self.shared.lock().unwrap().agc_on = true;
-                    println!("AGC RSP1B activé");
+                    log::info!("RSP1B AGC enabled");
                 }
                 GainMode::Manual => {
                     let (was_agc, index) = {
@@ -355,35 +357,42 @@ impl Backend for MockBackend {
                     };
 
                     if was_agc {
-                        println!("AGC RSP1B désactivé");
+                        log::info!("RSP1B AGC disabled");
                         self.set_gain_index(index)?;
                     }
                 }
             },
 
             Event::AgcChanged(enabled) => {
-                println!(">>> BACKEND AGC RTL (0x08) ignoré : enabled={}", enabled);
+                log::debug!("RTL digital AGC (0x08) ignored: enabled={}", enabled);
             }
 
             Event::BandwidthChanged(hz) => {
                 if !SUPPORTED_BANDWIDTHS_HZ.contains(hz) {
-                    return Err(anyhow::anyhow!("Bande passante non supportée : {} Hz", hz));
+                    return Err(anyhow::anyhow!("Unsupported bandwidth: {} Hz", hz));
                 }
 
                 self.shared.lock().unwrap().bandwidth_hz = *hz;
-                println!("Bande passante RSP1B réglée à {} Hz", hz);
+                log::info!("RSP1B bandwidth set to {} Hz", hz);
             }
 
             Event::SampleRateChanged(hz) => {
                 self.shared.lock().unwrap().sample_rate = *hz;
-                println!("Sample rate RSP1B réglé à {} Hz", hz);
+                log::info!("RSP1B sample rate set to {} Hz", hz);
             }
 
             Event::BiasTeeChanged(enabled) => {
                 let mut s = self.shared.lock().unwrap();
                 if s.bias_t != *enabled {
                     s.bias_t = *enabled;
-                    println!(">>> Bias-T : {}", if *enabled { "activé (alimentation antenne)" } else { "désactivé" });
+                    log::info!(
+                        "Bias-T: {}",
+                        if *enabled {
+                            "enabled (antenna power)"
+                        } else {
+                            "disabled"
+                        }
+                    );
                 }
             }
 
@@ -391,7 +400,10 @@ impl Backend for MockBackend {
                 let mut s = self.shared.lock().unwrap();
                 if s.rf_notch != *enabled {
                     s.rf_notch = *enabled;
-                    println!(">>> RF notch (FM) : {}", if *enabled { "activé" } else { "désactivé" });
+                    log::info!(
+                        "RF notch (FM): {}",
+                        if *enabled { "enabled" } else { "disabled" }
+                    );
                 }
             }
 
@@ -399,13 +411,16 @@ impl Backend for MockBackend {
                 let mut s = self.shared.lock().unwrap();
                 if s.dab_notch != *enabled {
                     if *enabled && s.band == Band::Band3 {
-                        println!(
-                            ">>> ATTENTION : le notch DAB atténue la bande III (174-240 MHz) : \
-                             la réception DAB sera dégradée"
+                        log::warn!(
+                            "DAB notch enabled in band III (174-240 MHz): \
+                             DAB reception will be degraded"
                         );
                     }
                     s.dab_notch = *enabled;
-                    println!(">>> DAB notch : {}", if *enabled { "activé" } else { "désactivé" });
+                    log::info!(
+                        "DAB notch: {}",
+                        if *enabled { "enabled" } else { "disabled" }
+                    );
                 }
             }
 
@@ -414,7 +429,7 @@ impl Backend for MockBackend {
                 let ppm = *ppm as f64;
                 if (s.ppm - ppm).abs() > 1e-9 {
                     s.ppm = ppm;
-                    println!(">>> Correction fréquence : {:.3} ppm", ppm);
+                    log::info!("Frequency correction: {:.3} ppm", ppm);
                 }
             }
 
@@ -431,15 +446,17 @@ impl Backend for MockBackend {
         self.rx.take()
     }
 
-    /// Même message de surcharge que le vrai backend (au plus toutes les 2 s).
+    /// Same overload message as the real backend (at most every 2 s).
     fn service(&mut self) {
         let mut s = self.shared.lock().unwrap();
 
         if s.overload_events > 0 && self.last_overload_log.elapsed() >= Duration::from_secs(2) {
-            println!(
-                "!!! SURCHARGE ADC ({} fois) bande={:?} pas de gain={} : réduire le gain \
-                 (LNAstate plus élevé) ou activer l'AGC",
-                s.overload_events, s.band, s.gain_index
+            log::warn!(
+                "ADC OVERLOAD ({} times) band={:?} gain step={}: lower the gain \
+                 (higher LNA state) or enable the AGC",
+                s.overload_events,
+                s.band,
+                s.gain_index
             );
             s.overload_events = 0;
             self.last_overload_log = Instant::now();
@@ -464,24 +481,31 @@ mod tests {
 
     #[test]
     fn total_gain_matches_observed_rsp1b_values() {
-        // Relevés : LNA 0 / gRdB 20 -> 85,58 dB ; LNA 0 / gRdB 38 -> 67,58 dB.
+        // Observed: LNA 0 / gRdB 20 -> 85.58 dB; LNA 0 / gRdB 38 -> 67.58 dB.
         assert!((total_gain_db(0, 20) - 85.6).abs() < 0.1);
         assert!((total_gain_db(0, 38) - 67.6).abs() < 0.1);
-        // LNA 5 (26 dB) / gRdB 44 -> environ 35,6 dB.
+        // LNA 5 (26 dB) / gRdB 44 -> about 35.6 dB.
         assert!((total_gain_db(5, 44) - 35.6).abs() < 0.1);
     }
 
     #[test]
     fn total_gain_never_decreases_with_the_gain_step() {
-        // Bandes où l'approximation « table LNA 60-420 MHz » du modèle est
-        // représentative. Pas Am ni 420-1000 MHz : leurs atténuations LNA
-        // réelles diffèrent, et le modèle n'y est pas monotone.
+        // Bands where the model's "60-420 MHz LNA table" approximation is
+        // representative. Not Am nor 420-1000 MHz: their real LNA attenuations
+        // differ, and the model is not monotonic there.
         for band in [Band::Vhf, Band::Band3, Band::BandX, Band::LBand] {
             let mut previous = f64::MIN;
             for index in 0..gain::GAIN_STEPS {
                 let (lna, gr) = gain::settings(band, index);
                 let g = total_gain_db(lna, gr);
-                assert!(g >= previous - 0.01, "{:?} pas {} : {} < {}", band, index, g, previous);
+                assert!(
+                    g >= previous - 0.01,
+                    "{:?} step {}: {} < {}",
+                    band,
+                    index,
+                    g,
+                    previous
+                );
                 previous = g;
             }
         }
@@ -498,7 +522,11 @@ mod tests {
         }
 
         let level = dbfs(level_dbm, total_gain_db(lna, gr));
-        assert!((level - AGC_TARGET_DBFS).abs() <= 1.0, "niveau final {}", level);
+        assert!(
+            (level - AGC_TARGET_DBFS).abs() <= 1.0,
+            "niveau final {}",
+            level
+        );
         assert!((GR_MIN..=GR_MAX).contains(&gr));
     }
 
@@ -512,7 +540,11 @@ mod tests {
     fn noise_table_is_unit_variance() {
         let t = noise_table();
         let n = t.len() as f64;
-        let power: f64 = t.iter().map(|(i, q)| (*i as f64).powi(2) + (*q as f64).powi(2)).sum::<f64>() / (2.0 * n);
+        let power: f64 = t
+            .iter()
+            .map(|(i, q)| (*i as f64).powi(2) + (*q as f64).powi(2))
+            .sum::<f64>()
+            / (2.0 * n);
         assert!((power - 1.0).abs() < 0.03, "variance {}", power);
     }
 }

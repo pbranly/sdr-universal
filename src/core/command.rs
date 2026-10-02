@@ -1,6 +1,8 @@
-
 use super::{IfType, LoMode, ReceiverMode};
 
+/// The core's command surface. Not every command is used by the current
+/// outputs yet; they are the common vocabulary for future ones (hamlib...).
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Command {
     GetState,
@@ -14,7 +16,7 @@ pub enum Command {
     SetSampleRate(u32),
 
     SetGain(f32),
-    /// Pas de gain 0..=28 (commande rtl_tcp 0x0D) : LNAstate + gRdB de la bande courante.
+    /// Gain step 0..=28 (rtl_tcp command 0x0D): LNAstate + gRdB of the current band.
     SetGainIndex(usize),
     SetGainMode(super::GainMode),
     SetAgc(bool),
@@ -29,5 +31,3 @@ pub enum Command {
     StartIq,
     StopIq,
 }
-
-

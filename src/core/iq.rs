@@ -28,19 +28,18 @@ impl IqBlock {
             samples,
         }
     }
-
-    pub fn len(&self) -> usize {
-        self.samples.len()
-    }
 }
 
+#[cfg_attr(not(feature = "sdrplay"), allow(dead_code))] // only the SDRplay backend reblocks IQ
 pub const IQ_BLOCK_SIZE: usize = 4096;
 
+#[cfg_attr(not(feature = "sdrplay"), allow(dead_code))] // only the SDRplay backend reblocks IQ
 pub struct IqReblocker {
     buffer: Vec<IqSample>,
     sequence: u64,
 }
 
+#[cfg_attr(not(feature = "sdrplay"), allow(dead_code))] // only the SDRplay backend reblocks IQ
 impl IqReblocker {
     pub fn new() -> Self {
         Self {
@@ -76,10 +75,6 @@ impl IqReblocker {
 
         output
     }
-
-    pub fn pending_samples(&self) -> usize {
-        self.buffer.len()
-    }
 }
 
 pub struct IqDistributor {
@@ -105,10 +100,6 @@ impl IqDistributor {
         self.sinks.push(sink);
     }
 
-    pub fn sink_count(&self) -> usize {
-        self.sinks.len()
-    }
-
     pub fn distribute(&mut self, block: &IqBlock) {
         for sink in &mut self.sinks {
             sink.push(block);
@@ -118,39 +109,8 @@ impl IqDistributor {
             self.blocks_distributed += 1;
         }
     }
-
-    pub fn blocks_distributed(&self) -> u64 {
-        self.blocks_distributed
-    }
 }
 
 pub trait IqSink: Send {
     fn push(&mut self, block: &IqBlock);
-}
-
-#[derive(Debug, Default)]
-pub struct IqMonitorSink {
-    blocks_received: u64,
-    samples_received: u64,
-}
-
-impl IqMonitorSink {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn blocks_received(&self) -> u64 {
-        self.blocks_received
-    }
-
-    pub fn samples_received(&self) -> u64 {
-        self.samples_received
-    }
-}
-
-impl IqSink for IqMonitorSink {
-    fn push(&mut self, block: &IqBlock) {
-        self.blocks_received += 1;
-        self.samples_received += block.samples.len() as u64;
-    }
 }

@@ -98,7 +98,7 @@ gateway and port `1234`, and enable its control-port option to get the RF level
 A typical, quieter way to watch what matters:
 
 ```bash
-./target/release/sdr-universal 2>&1 | grep --line-buffered -E ">>> GAIN|SURCHARGE|Changement de bande|Erreur|échoué"
+./target/release/sdr-universal 2>&1 | grep --line-buffered -E "GAIN|OVERLOAD|Band change|WARN|ERROR"
 ```
 
 Try it without hardware:
@@ -126,6 +126,7 @@ sdr-universal --version
 | `--version`, `-V` | | | Print the version and exit. |
 | `--help`, `-h` | | | Print a short help and exit. |
 | | `SDRPLAY_API_LIB` | system search | Full path of `libsdrplay_api.so`. |
+| | `RUST_LOG` | `info` | Log filter, for example `warn` or `info,backend::sdrplay=debug`. See [docs/USAGE.md](docs/USAGE.md#reading-the-log). |
 
 ## Documentation
 
@@ -150,8 +151,6 @@ sdr-universal --version
 - **Sample rate.** The RSP runs at the rate the client asks for when the API accepts
   it (for example 2.048 MS/s for DAB). Rates below 2 MS/s are produced by a simple
   linear resampler without an anti-aliasing filter; treat them as best-effort.
-- **Log messages are in French** (the strings to search for are listed in
-  [docs/USAGE.md](docs/USAGE.md)).
 - **Absolute RF level needs a one-time calibration** (see [docs/GAIN.md](docs/GAIN.md)).
 
 ## License

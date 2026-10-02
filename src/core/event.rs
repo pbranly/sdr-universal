@@ -1,5 +1,8 @@
 use super::{GainMode, IfType, LoMode, ReceiverMode};
 
+/// Events produced by the core for the backend (and, later, other outputs).
+/// Some variants are not produced yet.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Event {
     StateChanged,

@@ -32,7 +32,7 @@ Each command is 5 bytes: one opcode byte and a 32-bit big-endian argument.
 | `0x40` | Set bandwidth (Hz) | Yes (extension used by AbracaDABra). Rounded up to 200, 300, 600 or 1536 kHz. |
 | others | (IF gain, test mode, direct sampling, offset tuning, crystal frequencies…) | Ignored. |
 
-A refused or invalid command is logged (`Erreur commande Core RTL-TCP`) and does not
+A refused or invalid command is logged (`Core command failed`) and does not
 affect the stream.
 
 ## Control port (port 1235, i.e. rtl_tcp port + 1)

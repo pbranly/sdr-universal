@@ -67,9 +67,9 @@ tests are still needed.
 Run with a real RSP1B:
 
 - [ ] DAB decoding on band III with the client's hardware AGC, software AGC and manual gain.
-- [ ] Manual gain raised step by step: `SURCHARGE` appears before decoding is lost.
-- [ ] Channel changes inside band III: no `Erreur` or `échoué` lines.
-- [ ] Crossing bands (FM ↔ DAB ↔ UHF ↔ L-band): `Changement de bande` logged and gain re-applied.
+- [ ] Manual gain raised step by step: `ADC OVERLOAD` appears before decoding is lost.
+- [ ] Channel changes inside band III: no `ERROR` or `WARN` lines.
+- [ ] Crossing bands (FM ↔ DAB ↔ UHF ↔ L-band): `Band change` logged and gain re-applied.
 - [ ] Client disconnect and reconnect without restarting the gateway.
 - [ ] Ctrl+C, then an immediate restart: the RSP is released and found again.
 - [ ] Unplug and replug the RSP; restart the SDRplay API service.

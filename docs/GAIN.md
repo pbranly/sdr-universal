@@ -70,14 +70,14 @@ normally lowers the gain until its peaks sit well inside the range.
 
 The SDRplay API reports ADC overload events. The gateway acknowledges each one (the
 API sends no further overload message until it is acknowledged) and logs
-`!!! SURCHARGE ADC`, at most once every 2 seconds. The overload flag is also sent on the
+`ADC OVERLOAD` (a warning), at most once every 2 seconds. The overload flag is also sent on the
 control port.
 
 **Strong signals need less gain.** If a client's manual gain is raised until the
 signal is clipped in the API's 16-bit output, decoding stops. In the author's setup on
 DAB channel 8A (195.936 MHz) the raw signal reached full scale at step 15 and the
 best range was around steps 9–12; your antenna and location will differ. Use the
-AGC, or raise the manual gain until `SURCHARGE` appears and then back off two or three
+AGC, or raise the manual gain until `ADC OVERLOAD` appears and then back off two or three
 steps.
 
 ## RF level (dBm) in AbracaDABra

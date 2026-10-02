@@ -37,10 +37,6 @@ impl IqProcessor {
         &mut self.distributor
     }
 
-    pub fn stats(&self) -> IqProcessorStats {
-        self.stats
-    }
-
     pub fn blocks_processed(&self) -> u64 {
         self.stats.blocks_processed
     }

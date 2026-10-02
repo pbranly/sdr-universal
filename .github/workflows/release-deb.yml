@@ -152,10 +152,10 @@ jobs:
           # Simulated receiver: no hardware and no SDRplay API needed.
           sdr-universal --mock --port 26000 > mock.log 2>&1 &
           sleep 5
-          grep -q "MODE FACTICE" mock.log
+          grep -q "MOCK MODE" mock.log
           pkill -INT -x sdr-universal
           sleep 4
-          grep -q "arrêt propre" mock.log
+          grep -q "clean shutdown" mock.log
 
           sudo apt-get remove -y sdr-universal
 

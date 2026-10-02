@@ -67,34 +67,57 @@ or manual gain.
 
 ## Reading the log
 
-The log is currently in French. These are the lines to look for:
+Log lines go to **stderr** (use `2>&1` to pipe them), one per line, with a UTC
+timestamp, the level and the module that logged them:
 
-| Log text | Meaning |
+```
+2026-10-02T20:00:22.720Z INFO  backend::sdrplay: Band change Vhf -> Band3: gain re-applied (step 14)
+```
+
+| Level | Used for |
 |---|---|
-| `>>> GAIN : bande=… pas=…/28 -> LNA=… gRdB=…` | A gain step was applied: band, requested step, LNA state and IF gain reduction, then the values read back. |
-| `Changement de bande X -> Y : gain réappliqué` | The frequency crossed a band boundary and the gain was re-applied with the new band's table. |
-| `!!! SURCHARGE ADC (n fois)` | The ADC overloaded (at most one message every 2 s). Lower the gain or use the AGC. |
-| `AGC RSP1B activé / désactivé` | The hardware AGC was switched. |
-| `Bande passante RSP1B réglée à … Hz` | Analog bandwidth applied. |
-| `Sample rate RSP1B réglé à … Hz` | Sample rate applied. |
-| `>>> Bias-T`, `>>> RF notch (FM)`, `>>> DAB notch`, `>>> Correction fréquence` | Hardware option changed (logged only when the value changes). |
-| `>>> ATTENTION : le notch DAB …` | The DAB notch was enabled while in band III, which degrades DAB reception. |
-| `Port de contrôle (niveau RF) en écoute` / `Client de contrôle connecté` | Control port state. |
-| `>>> RTL-TCP client connecté` / `<<< RTL-TCP client déconnecté` | rtl_tcp client state. |
-| `Erreur`, `échoué` | A command or API call failed. |
+| `ERROR` | A failure the gateway cannot work around (API call failed, port unavailable) |
+| `WARN` | Something to look at: ADC overload, refused command, exposed network interfaces |
+| `INFO` | Default. State changes: gain, band, bandwidth, clients, start-up and shutdown |
+| `DEBUG` | `--verbose`. API events, receiver parameters, raw commands, IQ statistics |
+| `TRACE` | Per-block and per-command traces (very verbose) |
+
+**Choosing what to show.** `--verbose` (or `SDR_VERBOSE=1`) selects `DEBUG`. The `RUST_LOG`
+environment variable overrides it, with a global level and/or per-module levels:
+
+```bash
+RUST_LOG=warn sdr-universal                          # warnings and errors only
+RUST_LOG=info,backend::sdrplay=debug sdr-universal   # details for the SDRplay backend only
+RUST_LOG=output=trace sdr-universal                  # everything from the rtl_tcp / control outputs
+```
+
+Modules: `backend::sdrplay`, `backend::mock`, `output::rtltcp`, `output::control`, `core`
+and `sdr_universal` (start-up and main loop).
+
+The messages to look for:
+
+| Log text | Level | Meaning |
+|---|---|---|
+| `GAIN: band=… step=…/28 -> LNA=… gRdB=…` | INFO | A gain step was applied: band, requested step, LNA state and IF gain reduction, then the values read back. |
+| `Band change X -> Y: gain re-applied (step N)` | INFO | The frequency crossed a band boundary and the gain was re-applied with the new band's table. |
+| `ADC OVERLOAD (n times) …` | WARN | The ADC overloaded (at most one message every 2 s). Lower the gain or use the AGC. |
+| `RSP1B AGC enabled` / `disabled` | INFO | The hardware AGC was switched. |
+| `RSP1B bandwidth set to … Hz`, `RSP1B sample rate set to … Hz`, `RSP1B frequency set to … Hz` | INFO | Receiver setting applied. |
+| `Bias-T: …`, `RF notch (FM): …`, `DAB notch: …`, `Frequency correction: … ppm` | INFO | Hardware option changed (logged only when the value changes). |
+| `DAB notch enabled in band III …` | WARN | The DAB notch degrades DAB reception. |
+| `control port (RF level) listening on …` / `control client connected` | INFO | Control port state. |
+| `RTL-TCP client connected` / `RTL-TCP client disconnected` | INFO | rtl_tcp client state. |
+| `Core command failed: …` | WARN | A command from a client was refused (for example a value out of range). |
 
 Handy filters:
 
 ```bash
-# Gain, overloads, band changes and errors only
-./target/release/sdr-universal 2>&1 | grep --line-buffered -E ">>> GAIN|SURCHARGE|Changement de bande|Erreur|échoué"
+# Gain, overloads, band changes, warnings and errors
+sdr-universal 2>&1 | grep --line-buffered -E "GAIN|OVERLOAD|Band change|WARN|ERROR"
 
 # Keep the full log in a file and show only the essentials on screen
-./target/release/sdr-universal 2>&1 | tee /tmp/sdr.log | grep --line-buffered -E ">>> GAIN|SURCHARGE|Erreur|échoué"
+sdr-universal 2>&1 | tee /tmp/sdr.log | grep --line-buffered -E "GAIN|OVERLOAD|WARN|ERROR"
 ```
-
-Run with `--verbose` for API events, per-block IQ statistics (`RTL: min=… max=…`
-byte range) and raw commands.
 
 ## Hardware options
 

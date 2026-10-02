@@ -1,9 +1,9 @@
 use std::path::Path;
 use std::process::Command;
 
-/// Version « git » affichée par `--version` : tag ou hash court du commit.
-/// La variable d'environnement SDR_UNIVERSAL_GIT la remplace (utile hors d'un
-/// dépôt git, par exemple dans un paquet source).
+/// Git version shown by `--version`: tag or short commit hash.
+/// The SDR_UNIVERSAL_GIT environment variable overrides it (useful outside a
+/// git repository, for example in a source package).
 fn git_version() -> String {
     if let Ok(value) = std::env::var("SDR_UNIVERSAL_GIT") {
         if !value.trim().is_empty() {
@@ -26,7 +26,7 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=SDR_UNIVERSAL_GIT");
 
-    // Recalculer la version git quand un commit ou un tag est créé.
+    // Recompute the git version when a commit or a tag is created.
     for path in [".git/HEAD", ".git/logs/HEAD", ".git/packed-refs"] {
         if Path::new(path).exists() {
             println!("cargo:rerun-if-changed={}", path);

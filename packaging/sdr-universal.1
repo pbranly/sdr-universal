@@ -39,7 +39,15 @@ Print the version and exit.
 .TP
 .BR \-h ", " \-\-help
 Print a short help and exit.
+.SH LOGGING
+Log lines go to standard error, with a UTC timestamp, the level and the module.
+The default level is info; \fB\-\-verbose\fR selects debug. The RUST_LOG
+environment variable overrides it, with a global level and/or per-module levels,
+for example \fBRUST_LOG=warn\fR or \fBRUST_LOG=info,backend::sdrplay=debug\fR.
 .SH ENVIRONMENT
+.TP
+.B RUST_LOG
+Log filter (see LOGGING).
 .TP
 .B SDRPLAY_API_LIB
 Full path of libsdrplay_api.so, instead of the default system search.

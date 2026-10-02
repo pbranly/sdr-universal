@@ -1,12 +1,12 @@
+use crate::backend::Backend;
 use anyhow::{anyhow, Result};
+use libloading::Library;
 use std::os::raw::{c_int, c_void};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
-use libloading::Library;
 use std::sync::OnceLock;
-use crate::backend::Backend;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::core::{Event, IfType, IqBlock, IqReblocker, IqSample, LoMode};
 
@@ -19,7 +19,6 @@ const MAX_SER_NO_LEN: usize = 64;
 
 static IQ_CALLBACK_RECEIVED: AtomicBool = AtomicBool::new(false);
 static IQ_CALLBACK_COUNT: AtomicU64 = AtomicU64::new(0);
-static IQ_BLOCK_COUNT: AtomicU64 = AtomicU64::new(0);
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -308,11 +307,11 @@ struct CallbackContext {
     curr_gain_milli_db: AtomicU64,
     callback_gr_db: AtomicU64,
     iq_enabled: AtomicBool,
-    /// Surcharge ADC signalée par le service (et pas encore « corrigée »).
+    /// ADC overload reported by the service (and not yet "corrected").
     overload: AtomicBool,
-    /// Le service attend un acquittement (obligatoire pour recevoir la suite).
+    /// The service is waiting for an acknowledgement (required to receive further messages).
     overload_ack_pending: AtomicBool,
-    /// Nombre d'entrées en surcharge depuis le dernier message affiché.
+    /// Number of overload entries since the last message was logged.
     overload_events: AtomicU64,
 }
 
@@ -344,36 +343,20 @@ const _: () = {
     assert!(std::mem::size_of::<SdrplayCallbackFns>() == 24);
 };
 
-type SdrplayApiOpen =
-    unsafe extern "C" fn() -> c_int;
-type SdrplayApiClose =
-    unsafe extern "C" fn() -> c_int;
-type SdrplayApiApiVersion =
-    unsafe extern "C" fn(*mut f32) -> c_int;
-type SdrplayApiLockDeviceApi =
-    unsafe extern "C" fn() -> c_int;
-type SdrplayApiUnlockDeviceApi =
-    unsafe extern "C" fn() -> c_int;
-type SdrplayApiGetDevices =
-    unsafe extern "C" fn(*mut SdrplayDevice, *mut u32, u32) -> c_int;
-type SdrplayApiDisableHeartbeat =
-    unsafe extern "C" fn() -> c_int;
-type SdrplayApiSelectDevice =
-    unsafe extern "C" fn(*mut SdrplayDevice) -> c_int;
-type SdrplayApiReleaseDevice =
-    unsafe extern "C" fn(*mut c_void) -> c_int;
+type SdrplayApiOpen = unsafe extern "C" fn() -> c_int;
+type SdrplayApiClose = unsafe extern "C" fn() -> c_int;
+type SdrplayApiApiVersion = unsafe extern "C" fn(*mut f32) -> c_int;
+type SdrplayApiLockDeviceApi = unsafe extern "C" fn() -> c_int;
+type SdrplayApiUnlockDeviceApi = unsafe extern "C" fn() -> c_int;
+type SdrplayApiGetDevices = unsafe extern "C" fn(*mut SdrplayDevice, *mut u32, u32) -> c_int;
+type SdrplayApiSelectDevice = unsafe extern "C" fn(*mut SdrplayDevice) -> c_int;
+type SdrplayApiReleaseDevice = unsafe extern "C" fn(*mut c_void) -> c_int;
 type SdrplayApiGetDeviceParams =
     unsafe extern "C" fn(*mut c_void, *mut *mut SdrplayDeviceParams) -> c_int;
 type SdrplayApiInit =
-    unsafe extern "C" fn(
-        *mut c_void,
-        *mut SdrplayCallbackFns,
-        *mut c_void,
-    ) -> c_int;
-type SdrplayApiUninit =
-    unsafe extern "C" fn(*mut c_void) -> c_int;
-type SdrplayApiUpdate =
-    unsafe extern "C" fn(*mut c_void, c_int, c_int, c_int) -> c_int;
+    unsafe extern "C" fn(*mut c_void, *mut SdrplayCallbackFns, *mut c_void) -> c_int;
+type SdrplayApiUninit = unsafe extern "C" fn(*mut c_void) -> c_int;
+type SdrplayApiUpdate = unsafe extern "C" fn(*mut c_void, c_int, c_int, c_int) -> c_int;
 
 struct SdrplayApi {
     _library: Library,
@@ -384,7 +367,6 @@ struct SdrplayApi {
     lock_device_api: SdrplayApiLockDeviceApi,
     unlock_device_api: SdrplayApiUnlockDeviceApi,
     get_devices: SdrplayApiGetDevices,
-    disable_heartbeat: SdrplayApiDisableHeartbeat,
     select_device: SdrplayApiSelectDevice,
     release_device: SdrplayApiReleaseDevice,
     get_device_params: SdrplayApiGetDeviceParams,
@@ -395,9 +377,9 @@ struct SdrplayApi {
 
 static SDRPLAY_API: OnceLock<SdrplayApi> = OnceLock::new();
 
-/// Noms essayés, dans l'ordre, pour charger l'API SDRplay. La variable
-/// d'environnement `SDRPLAY_API_LIB` (chemin complet) remplace cette liste :
-/// utile pour un emplacement particulier, et pour les tests.
+/// Names tried, in order, to load the SDRplay API. The `SDRPLAY_API_LIB`
+/// environment variable (full path) replaces this list: useful for a specific
+/// location, and for tests.
 fn library_candidates() -> Vec<String> {
     if let Ok(path) = std::env::var("SDRPLAY_API_LIB") {
         if !path.is_empty() {
@@ -427,15 +409,15 @@ fn open_library() -> Result<Library> {
     }
 
     Err(anyhow!(
-        "API SDRplay introuvable (libsdrplay_api.so). Essais :\n{}\n\
-         Installez l'API SDRplay 3.x (https://www.sdrplay.com/software/install.sh), \
-         indiquez son emplacement avec SDRPLAY_API_LIB, ou utilisez --mock.",
+        "SDRplay API not found (libsdrplay_api.so). Tried:\n{}\n\
+         Install the SDRplay API 3.x (https://www.sdrplay.com/software/install.sh), \
+         set SDRPLAY_API_LIB to its location, or use --mock.",
         attempts.join("\n")
     ))
 }
 
-/// Charge l'API SDRplay (une seule fois) ; à appeler avant toute utilisation
-/// du backend pour échouer tôt avec un message clair.
+/// Loads the SDRplay API (once); call it before any use of the backend to
+/// fail early with a clear message.
 pub fn ensure_api_loaded() -> Result<()> {
     load_sdrplay_api()
 }
@@ -450,28 +432,21 @@ fn load_sdrplay_api() -> Result<()> {
     unsafe {
         let open = *library.get::<SdrplayApiOpen>(b"sdrplay_api_Open\0")?;
         let close = *library.get::<SdrplayApiClose>(b"sdrplay_api_Close\0")?;
-        let api_version =
-            *library.get::<SdrplayApiApiVersion>(b"sdrplay_api_ApiVersion\0")?;
+        let api_version = *library.get::<SdrplayApiApiVersion>(b"sdrplay_api_ApiVersion\0")?;
         let lock_device_api =
             *library.get::<SdrplayApiLockDeviceApi>(b"sdrplay_api_LockDeviceApi\0")?;
         let unlock_device_api =
             *library.get::<SdrplayApiUnlockDeviceApi>(b"sdrplay_api_UnlockDeviceApi\0")?;
-        let get_devices =
-            *library.get::<SdrplayApiGetDevices>(b"sdrplay_api_GetDevices\0")?;
-        let disable_heartbeat =
-            *library.get::<SdrplayApiDisableHeartbeat>(b"sdrplay_api_DisableHeartbeat\0")?;
+        let get_devices = *library.get::<SdrplayApiGetDevices>(b"sdrplay_api_GetDevices\0")?;
         let select_device =
             *library.get::<SdrplayApiSelectDevice>(b"sdrplay_api_SelectDevice\0")?;
         let release_device =
             *library.get::<SdrplayApiReleaseDevice>(b"sdrplay_api_ReleaseDevice\0")?;
         let get_device_params =
             *library.get::<SdrplayApiGetDeviceParams>(b"sdrplay_api_GetDeviceParams\0")?;
-        let init =
-            *library.get::<SdrplayApiInit>(b"sdrplay_api_Init\0")?;
-        let uninit =
-            *library.get::<SdrplayApiUninit>(b"sdrplay_api_Uninit\0")?;
-        let update =
-            *library.get::<SdrplayApiUpdate>(b"sdrplay_api_Update\0")?;
+        let init = *library.get::<SdrplayApiInit>(b"sdrplay_api_Init\0")?;
+        let uninit = *library.get::<SdrplayApiUninit>(b"sdrplay_api_Uninit\0")?;
+        let update = *library.get::<SdrplayApiUpdate>(b"sdrplay_api_Update\0")?;
 
         let api = SdrplayApi {
             _library: library,
@@ -482,7 +457,6 @@ fn load_sdrplay_api() -> Result<()> {
             lock_device_api,
             unlock_device_api,
             get_devices,
-            disable_heartbeat,
             select_device,
             release_device,
             get_device_params,
@@ -493,110 +467,121 @@ fn load_sdrplay_api() -> Result<()> {
 
         SDRPLAY_API
             .set(api)
-            .map_err(|_| anyhow!("API SDRplay déjà chargée"))?;
+            .map_err(|_| anyhow!("SDRplay API already loaded"))?;
     }
 
-    println!(">>> SDRplay API chargée dynamiquement");
+    log::info!("SDRplay API loaded dynamically");
 
     Ok(())
 }
 
 #[inline]
+#[allow(non_snake_case)] // mirrors the C function names
 unsafe fn sdrplay_api_Open() -> c_int {
-    (SDRPLAY_API.get().expect("SDRplay API non chargée").open)()
+    (SDRPLAY_API.get().expect("SDRplay API not loaded").open)()
 }
 
 #[inline]
+#[allow(non_snake_case)] // mirrors the C function names
 unsafe fn sdrplay_api_Close() -> c_int {
-    (SDRPLAY_API.get().expect("SDRplay API non chargée").close)()
+    (SDRPLAY_API.get().expect("SDRplay API not loaded").close)()
 }
 
 #[inline]
+#[allow(non_snake_case)] // mirrors the C function names
 unsafe fn sdrplay_api_ApiVersion(api_ver: *mut f32) -> c_int {
-    (SDRPLAY_API.get().expect("SDRplay API non chargée").api_version)(api_ver)
+    (SDRPLAY_API
+        .get()
+        .expect("SDRplay API not loaded")
+        .api_version)(api_ver)
 }
 
 #[inline]
+#[allow(non_snake_case)] // mirrors the C function names
 unsafe fn sdrplay_api_LockDeviceApi() -> c_int {
-    (SDRPLAY_API.get().expect("SDRplay API non chargée").lock_device_api)()
+    (SDRPLAY_API
+        .get()
+        .expect("SDRplay API not loaded")
+        .lock_device_api)()
 }
 
 #[inline]
+#[allow(non_snake_case)] // mirrors the C function names
 unsafe fn sdrplay_api_UnlockDeviceApi() -> c_int {
-    (SDRPLAY_API.get().expect("SDRplay API non chargée").unlock_device_api)()
+    (SDRPLAY_API
+        .get()
+        .expect("SDRplay API not loaded")
+        .unlock_device_api)()
 }
 
 #[inline]
+#[allow(non_snake_case)] // mirrors the C function names
 unsafe fn sdrplay_api_GetDevices(
     devices: *mut SdrplayDevice,
     num_devs: *mut u32,
     max_devs: u32,
 ) -> c_int {
-    (SDRPLAY_API.get().expect("SDRplay API non chargée").get_devices)(
-        devices,
-        num_devs,
-        max_devs,
-    )
-}
-
-#[inline]
-unsafe fn sdrplay_api_DisableHeartbeat() -> c_int {
     (SDRPLAY_API
         .get()
-        .expect("SDRplay API non chargée")
-        .disable_heartbeat)()
+        .expect("SDRplay API not loaded")
+        .get_devices)(devices, num_devs, max_devs)
 }
 
 #[inline]
+#[allow(non_snake_case)] // mirrors the C function names
 unsafe fn sdrplay_api_SelectDevice(device: *mut SdrplayDevice) -> c_int {
-    (SDRPLAY_API.get().expect("SDRplay API non chargée").select_device)(device)
+    (SDRPLAY_API
+        .get()
+        .expect("SDRplay API not loaded")
+        .select_device)(device)
 }
 
 #[inline]
+#[allow(non_snake_case)] // mirrors the C function names
 unsafe fn sdrplay_api_ReleaseDevice(device: *mut c_void) -> c_int {
     (SDRPLAY_API
         .get()
-        .expect("SDRplay API non chargée")
+        .expect("SDRplay API not loaded")
         .release_device)(device)
 }
 
 #[inline]
+#[allow(non_snake_case)] // mirrors the C function names
 unsafe fn sdrplay_api_GetDeviceParams(
     dev: *mut c_void,
     device_params: *mut *mut SdrplayDeviceParams,
 ) -> c_int {
     (SDRPLAY_API
         .get()
-        .expect("SDRplay API non chargée")
+        .expect("SDRplay API not loaded")
         .get_device_params)(dev, device_params)
 }
 
 #[inline]
+#[allow(non_snake_case)] // mirrors the C function names
 unsafe fn sdrplay_api_Init(
     dev: *mut c_void,
     callback_fns: *mut SdrplayCallbackFns,
     cb_context: *mut c_void,
 ) -> c_int {
-    (SDRPLAY_API.get().expect("SDRplay API non chargée").init)(
-        dev,
-        callback_fns,
-        cb_context,
-    )
+    (SDRPLAY_API.get().expect("SDRplay API not loaded").init)(dev, callback_fns, cb_context)
 }
 
 #[inline]
+#[allow(non_snake_case)] // mirrors the C function names
 unsafe fn sdrplay_api_Uninit(dev: *mut c_void) -> c_int {
-    (SDRPLAY_API.get().expect("SDRplay API non chargée").uninit)(dev)
+    (SDRPLAY_API.get().expect("SDRplay API not loaded").uninit)(dev)
 }
 
 #[inline]
+#[allow(non_snake_case)] // mirrors the C function names
 unsafe fn sdrplay_api_Update(
     dev: *mut c_void,
     tuner: c_int,
     reason_for_update: c_int,
     ext1_reason_for_update: c_int,
 ) -> c_int {
-    (SDRPLAY_API.get().expect("SDRplay API non chargée").update)(
+    (SDRPLAY_API.get().expect("SDRplay API not loaded").update)(
         dev,
         tuner,
         reason_for_update,
@@ -628,9 +613,9 @@ unsafe extern "C" fn stream_a_callback(
     if num_samples == 0 {
         return;
     }
-	if !context.iq_enabled.load(Ordering::Relaxed) {
-    return;
-}
+    if !context.iq_enabled.load(Ordering::Relaxed) {
+        return;
+    }
     let callback_count = IQ_CALLBACK_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
 
     if !params.is_null()
@@ -639,8 +624,8 @@ unsafe extern "C" fn stream_a_callback(
             || (*params).fs_changed != 0
             || reset != 0)
     {
-        vprintln!(
-            ">>> SDRplay CALLBACK CHANGE #{} : first={} gr={} rf={} fs={} reset={} num={}",
+        log::debug!(
+            "SDRplay CALLBACK CHANGE #{}: first={} gr={} rf={} fs={} reset={} num={}",
             callback_count,
             (*params).first_sample_num,
             (*params).gr_changed,
@@ -650,7 +635,7 @@ unsafe extern "C" fn stream_a_callback(
             num_samples
         );
 
-        // RMS brut du callback exact ayant signalé le changement.
+        // Raw RMS of the exact callback that reported the change.
         let mut sum_i_sq = 0.0f64;
         let mut sum_q_sq = 0.0f64;
 
@@ -665,11 +650,7 @@ unsafe extern "C" fn stream_a_callback(
         let rms_i = (sum_i_sq / n).sqrt();
         let rms_q = (sum_q_sq / n).sqrt();
 
-        vprintln!(
-            ">>> CALLBACK RAW RMS : I={:.6} Q={:.6}",
-            rms_i,
-            rms_q
-        );
+        log::debug!("CALLBACK RAW RMS: I={:.6} Q={:.6}", rms_i, rms_q);
     }
 
     if callback_count <= 3 && !params.is_null() {
@@ -678,8 +659,8 @@ unsafe extern "C" fn stream_a_callback(
             std::mem::size_of::<SdrplayStreamCbParams>(),
         );
 
-        println!(
-            ">>> PARAMS #{} : first={} gr={} rf={} fs={} num={} xi={:p} xq={:p}",
+        log::debug!(
+            "PARAMS #{}: first={} gr={} rf={} fs={} num={} xi={:p} xq={:p}",
             callback_count,
             (*params).first_sample_num,
             (*params).gr_changed,
@@ -690,7 +671,7 @@ unsafe extern "C" fn stream_a_callback(
             xq
         );
 
-        println!(">>> PARAMS RAW #{} : {:02x?}", callback_count, raw);
+        log::debug!("PARAMS RAW #{}: {:02x?}", callback_count, raw);
     }
 
     if callback_count <= 5 {
@@ -718,8 +699,8 @@ unsafe extern "C" fn stream_a_callback(
             0.0
         };
 
-        println!(
-            ">>> IQCHECK #{} reset={} num={} : Qmin={} Qmax={} Qrms={:.1} Qnonzero={}/{}",
+        log::debug!(
+            "IQCHECK #{} reset={} num={}: Qmin={} Qmax={} Qrms={:.1} Qnonzero={}/{}",
             callback_count,
             reset,
             num_samples,
@@ -731,13 +712,14 @@ unsafe extern "C" fn stream_a_callback(
         );
     }
 
-    // Un println! par callback (plusieurs centaines par seconde) bloque le
-    // thread temps réel de l'API sur la sortie terminal et provoque des pertes
-    // de paquets USB : une trace toutes les 2000 callbacks suffit.
+    // One log line per callback (several hundred per second) would block the API's
+    // real-time thread on terminal output and cause USB packet loss: one trace
+    // every 2000 callbacks is enough.
     if callback_count % 2000 == 1 {
-        vprintln!(
-            ">>> SDRplay IQ callback #{} : {} samples",
-            callback_count, num_samples
+        log::debug!(
+            "SDRplay IQ callback #{}: {} samples",
+            callback_count,
+            num_samples
         );
     }
 
@@ -760,7 +742,7 @@ unsafe extern "C" fn stream_a_callback(
             Ok(reblocker) => reblocker,
 
             Err(_) => {
-                eprintln!("Erreur : mutex IqReblocker empoisonné");
+                log::error!("IqReblocker mutex poisoned");
 
                 return;
             }
@@ -770,55 +752,54 @@ unsafe extern "C" fn stream_a_callback(
     };
 
     for block in blocks {
-        let block_count = IQ_BLOCK_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
-
-
         match context.iq_tx.try_send(block) {
             Ok(()) => {}
 
             Err(TrySendError::Full(_)) => {
-                context.dropped_blocks.fetch_add(1, Ordering::Relaxed);
+                let dropped = context.dropped_blocks.fetch_add(1, Ordering::Relaxed) + 1;
 
-                println!("!!! IQ BLOCK DROP : file IQ pleine");
+                // Rate-limited: this runs in the API's real-time thread, and a
+                // full queue would otherwise log once per block.
+                if dropped == 1 || dropped % 1000 == 0 {
+                    log::warn!(
+                        "IQ block dropped: IQ queue full ({} blocks dropped so far)",
+                        dropped
+                    );
+                }
             }
 
             Err(TrySendError::Disconnected(_)) => {
-                // Le Core n'écoute plus le flux IQ.
+                // The core is no longer listening to the IQ stream.
             }
         }
     }
 
     if !IQ_CALLBACK_RECEIVED.swap(true, Ordering::Relaxed) {
-        println!();
-        println!("=================================");
-        println!(" Flux IQ -> Core actif !");
-        println!("=================================");
+        log::info!("IQ stream -> core active");
 
-        println!("  numSamples      : {}", num_samples);
+        log::debug!("numSamples: {}", num_samples);
 
-        println!("  reset           : {}", reset);
+        log::debug!("reset: {}", reset);
 
         if !params.is_null() {
-            println!("  firstSampleNum  : {}", (*params).first_sample_num);
+            log::debug!("firstSampleNum: {}", (*params).first_sample_num);
 
-            println!("  grChanged       : {}", (*params).gr_changed);
+            log::debug!("grChanged: {}", (*params).gr_changed);
 
-            println!("  rfChanged       : {}", (*params).rf_changed);
+            log::debug!("rfChanged: {}", (*params).rf_changed);
 
-            println!("  fsChanged       : {}", (*params).fs_changed);
+            log::debug!("fsChanged: {}", (*params).fs_changed);
         }
 
         let first_i = *xi as f32 / 32768.0;
 
         let first_q = *xq as f32 / 32768.0;
 
-        println!("  premier I       : {:.6}", first_i);
+        log::debug!("first I: {:.6}", first_i);
 
-        println!("  premier Q       : {:.6}", first_q);
+        log::debug!("first Q: {:.6}", first_q);
 
-        println!("  taille bloc Core: {}", crate::core::IQ_BLOCK_SIZE);
-
-        println!();
+        log::debug!("core block size: {}", crate::core::IQ_BLOCK_SIZE);
     }
 }
 
@@ -828,37 +809,33 @@ unsafe extern "C" fn event_callback(
     params: *mut SdrplayEventParams,
     cb_context: *mut c_void,
 ) {
-    vprintln!(
-        "SDRplay event : eventId={} tuner={}",
-        event_id,
-        tuner
-    );
+    log::debug!("SDRplay event: eventId={} tuner={}", event_id, tuner);
 
     // sdrplay_api_GainChange = 0
     if event_id == 0 {
         if !params.is_null() {
             let gain = (*params).gain_params;
-			if !cb_context.is_null() {
-    let context = &*(cb_context as *const CallbackContext);
+            if !cb_context.is_null() {
+                let context = &*(cb_context as *const CallbackContext);
 
-    context
-        .callback_gr_db
-        .store(gain.gr_db as u64, Ordering::Relaxed);
+                context
+                    .callback_gr_db
+                    .store(gain.gr_db as u64, Ordering::Relaxed);
 
-    context
-        .lna_gr_db
-        .store(gain.lna_gr_db as u64, Ordering::Relaxed);
+                context
+                    .lna_gr_db
+                    .store(gain.lna_gr_db as u64, Ordering::Relaxed);
 
-    context
-        .curr_gain_milli_db
-        .store((gain.curr_gain * 1000.0) as u64, Ordering::Relaxed);
+                context
+                    .curr_gain_milli_db
+                    .store((gain.curr_gain * 1000.0) as u64, Ordering::Relaxed);
 
-    // Gain total réel (LNA + IF) pour les sorties : niveau RF d'AbracaDABra.
-    crate::core::telemetry::set_total_gain_db(gain.curr_gain);
-}
+                // Real total gain (LNA + IF) for the outputs: AbracaDABra's RF level.
+                crate::core::telemetry::set_total_gain_db(gain.curr_gain);
+            }
 
-            println!(
-                "  Gain callback : gRdB={} lnaGRdB={} currGain={:.2} dB",
+            log::debug!(
+                "gain callback: gRdB={} lnaGRdB={} currGain={:.2} dB",
                 gain.gr_db,
                 gain.lna_gr_db,
                 gain.curr_gain
@@ -867,15 +844,14 @@ unsafe extern "C" fn event_callback(
     }
 
     // sdrplay_api_PowerOverloadChange = 1
-    // Le service n'envoie plus aucun message de surcharge tant que le
-    // précédent n'a pas été acquitté (sdrplay_api_Update_Ctrl_OverloadMsgAck) :
-    // l'acquittement est fait hors de ce callback, par SdrplayBackend::service().
+    // The service sends no further overload message until the previous one has
+    // been acknowledged (sdrplay_api_Update_Ctrl_OverloadMsgAck): the
+    // acknowledgement is done outside this callback, by SdrplayBackend::service().
     if event_id == 1 && !params.is_null() && !cb_context.is_null() {
         let context = &*(cb_context as *const CallbackContext);
 
         // 0 = Overload_Detected, 1 = Overload_Corrected
-        let detected =
-            (*params).power_overload_params.power_overload_change_type == 0;
+        let detected = (*params).power_overload_params.power_overload_change_type == 0;
 
         let was = context.overload.swap(detected, Ordering::Relaxed);
 
@@ -898,11 +874,11 @@ pub struct SdrplayBackend {
     iq_rx: Option<Receiver<IqBlock>>,
     callback_context: Option<Box<CallbackContext>>,
     gain_mode: crate::core::GainMode,
-    /// Bande de gain courante (dépend de la fréquence RF).
+    /// Current gain band (depends on the RF frequency).
     band: Band,
-    /// Dernier pas de gain demandé (0..=28), réappliqué à chaque changement de bande.
+    /// Last gain step requested (0..=28), re-applied at every band change.
     gain_index: usize,
-    /// AGC matériel SDRplay actif.
+    /// SDRplay hardware AGC enabled.
     agc_on: bool,
     last_overload_log: Instant,
 }
@@ -921,10 +897,10 @@ impl SdrplayBackend {
             sample_rate: AtomicU64::new(2_000_000),
 
             dropped_blocks: AtomicU64::new(0),
-			lna_gr_db: AtomicU64::new(0),
-			curr_gain_milli_db: AtomicU64::new(0),
-			callback_gr_db: AtomicU64::new(0),
-			iq_enabled: AtomicBool::new(false),
+            lna_gr_db: AtomicU64::new(0),
+            curr_gain_milli_db: AtomicU64::new(0),
+            callback_gr_db: AtomicU64::new(0),
+            iq_enabled: AtomicBool::new(false),
             overload: AtomicBool::new(false),
             overload_ack_pending: AtomicBool::new(false),
             overload_events: AtomicU64::new(0),
@@ -957,7 +933,7 @@ impl SdrplayBackend {
             .ok_or_else(|| anyhow!("Contexte callback IQ absent"))?;
 
         context.iq_enabled.store(true, Ordering::Relaxed);
-		println!(">>> Backend IQ activé");
+        log::info!("IQ stream started");
 
         Ok(())
     }
@@ -969,7 +945,7 @@ impl SdrplayBackend {
             .ok_or_else(|| anyhow!("Contexte callback IQ absent"))?;
 
         context.iq_enabled.store(false, Ordering::Relaxed);
-		println!(">>> Backend IQ désactivé");
+        log::info!("IQ stream stopped");
 
         Ok(())
     }
@@ -981,12 +957,14 @@ impl SdrplayBackend {
 
                 self.set_frequency(*frequency_hz)?;
 
-                // La signification d'un LNAstate change avec la bande :
-                // on réapplique le pas de gain avec la table de la nouvelle bande.
+                // The meaning of an LNAstate changes with the band: re-apply the gain step
+                // with the new band's table.
                 if self.band != old_band {
-                    println!(
-                        ">>> Changement de bande {:?} -> {:?} : gain réappliqué (pas {})",
-                        old_band, self.band, self.gain_index
+                    log::info!(
+                        "Band change {:?} -> {:?}: gain re-applied (step {})",
+                        old_band,
+                        self.band,
+                        self.gain_index
                     );
                     self.set_gain_index(self.gain_index)?;
                 }
@@ -1016,7 +994,7 @@ impl SdrplayBackend {
                 self.set_gain_index(*index)?;
             }
 
-                        Event::GainModeChanged(gain_mode) => {
+            Event::GainModeChanged(gain_mode) => {
                 self.gain_mode = *gain_mode;
 
                 match gain_mode {
@@ -1024,13 +1002,12 @@ impl SdrplayBackend {
                         self.set_agc(true)?;
                     }
                     crate::core::GainMode::Manual => {
-                        // Certains clients renvoient « gain manuel » avant CHAQUE
-                        // réglage de gain : on ne touche au matériel que si l'AGC
-                        // était réellement active (sinon Update inutile et
-                        // retour bref à l'ancien gain avant le nouveau).
+                        // Some clients send "manual gain" before EVERY gain change: touch the
+                        // hardware only if the AGC was really on (otherwise a useless Update and a
+                        // brief return to the old gain before the new one).
                         if self.agc_on {
                             self.set_agc(false)?;
-                            // L'AGC a pu déplacer gRdB : retour au pas demandé.
+                            // The AGC may have moved gRdB: back to the requested step.
                             self.set_gain_index(self.gain_index)?;
                         }
                     }
@@ -1038,11 +1015,12 @@ impl SdrplayBackend {
             }
 
             Event::AgcChanged(enabled) => {
-                // rtl_tcp 0x08 = AGC numérique du RTL2832 : sans équivalent sur
-                // un RSP. L'AGC du RSP suit uniquement le mode de gain (0x03).
-                println!(
-                    ">>> BACKEND AGC RTL (0x08) ignoré : enabled={} gain_mode={:?}",
-                    enabled, self.gain_mode
+                // rtl_tcp 0x08 = RTL2832 digital AGC: no equivalent on an RSP. The RSP's
+                // AGC only follows the gain mode (0x03).
+                log::debug!(
+                    "RTL digital AGC (0x08) ignored: enabled={} gain_mode={:?}",
+                    enabled,
+                    self.gain_mode
                 );
             }
 
@@ -1076,13 +1054,6 @@ impl SdrplayBackend {
         Ok(())
     }
 
-    pub fn dropped_iq_blocks(&self) -> u64 {
-        self.callback_context
-            .as_ref()
-            .map(|context| context.dropped_blocks.load(Ordering::Relaxed))
-            .unwrap_or(0)
-    }
-
     pub fn connect(&mut self) -> Result<()> {
         load_sdrplay_api()?;
 
@@ -1090,7 +1061,7 @@ impl SdrplayBackend {
             let result = sdrplay_api_Open();
 
             if result != 0 {
-                return Err(anyhow!("sdrplay_api_Open() a échoué : {}", result));
+                return Err(anyhow!("sdrplay_api_Open() failed: {}", result));
             }
 
             self.connected = true;
@@ -1102,10 +1073,10 @@ impl SdrplayBackend {
             if result != 0 {
                 self.disconnect();
 
-                return Err(anyhow!("sdrplay_api_ApiVersion() a échoué : {}", result));
+                return Err(anyhow!("sdrplay_api_ApiVersion() failed: {}", result));
             }
 
-            println!("SDRplay API : {:.2}", api_version);
+            log::info!("SDRplay API version: {:.2}", api_version);
 
             if let Err(err) = self.select_first_device() {
                 self.disconnect();
@@ -1121,7 +1092,7 @@ impl SdrplayBackend {
         let result = sdrplay_api_LockDeviceApi();
 
         if result != 0 {
-            return Err(anyhow!("LockDeviceApi() a échoué : {}", result));
+            return Err(anyhow!("LockDeviceApi() failed: {}", result));
         }
 
         let mut devices = [SdrplayDevice {
@@ -1143,15 +1114,15 @@ impl SdrplayBackend {
         if result != 0 {
             sdrplay_api_UnlockDeviceApi();
 
-            return Err(anyhow!("GetDevices() a échoué : {}", result));
+            return Err(anyhow!("GetDevices() failed: {}", result));
         }
 
-        println!("Nombre de périphériques SDRplay : {}", num_devices);
+        log::info!("SDRplay devices found: {}", num_devices);
 
         if num_devices == 0 {
             sdrplay_api_UnlockDeviceApi();
 
-            return Err(anyhow!("Aucun périphérique SDRplay détecté"));
+            return Err(anyhow!("No SDRplay device detected"));
         }
 
         let device = &mut devices[0];
@@ -1164,23 +1135,22 @@ impl SdrplayBackend {
 
         let serial = String::from_utf8_lossy(&device.ser_no[..serial_end]).to_string();
 
-        println!("Périphérique sélectionné :");
+        log::info!("Selected device:");
 
-        println!("  série : {}", serial);
+        log::info!("  serial: {}", serial);
 
-        println!("  hwVer : {}", device.hw_ver);
+        log::info!("  hardware version: {}", device.hw_ver);
 
-       // sdrplay_api_DisableHeartbeat() désactivé : le heartbeat est le
-// filet de sécurité qui permet au service sdrplay de libérer le
-// device automatiquement si le client se ferme sans avoir pu
-// propager Uninit/Close proprement.
+        // sdrplay_api_DisableHeartbeat() is not called: the heartbeat is the safety net
+        // that lets the sdrplay service release the device automatically if the
+        // client exits without being able to propagate Uninit/Close properly.
 
-let result = sdrplay_api_SelectDevice(device);
+        let result = sdrplay_api_SelectDevice(device);
 
         if result != 0 {
             sdrplay_api_UnlockDeviceApi();
 
-            return Err(anyhow!("SelectDevice() a échoué : {}", result));
+            return Err(anyhow!("SelectDevice() failed: {}", result));
         }
 
         let selected_device = *device;
@@ -1194,10 +1164,10 @@ let result = sdrplay_api_SelectDevice(device);
         let result = sdrplay_api_UnlockDeviceApi();
 
         if result != 0 {
-            return Err(anyhow!("UnlockDeviceApi() a échoué : {}", result));
+            return Err(anyhow!("UnlockDeviceApi() failed: {}", result));
         }
 
-        println!("RSP1B sélectionné.");
+        log::info!("Device selected");
 
         self.get_device_params(selected_device.dev)?;
 
@@ -1212,25 +1182,24 @@ let result = sdrplay_api_SelectDevice(device);
         let result = sdrplay_api_GetDeviceParams(dev, &mut params);
 
         if result != 0 {
-            return Err(anyhow!("GetDeviceParams() a échoué : {}", result));
+            return Err(anyhow!("GetDeviceParams() failed: {}", result));
         }
 
         if params.is_null() {
             return Err(anyhow!(
-                "GetDeviceParams() a réussi mais retourne un pointeur NULL"
+                "GetDeviceParams() succeeded but returned a NULL pointer"
             ));
         }
 
-        println!();
-        println!("Paramètres SDRplay récupérés.");
+        log::debug!("device parameters retrieved");
 
-        println!("  deviceParams : {:p}", params);
+        log::debug!("deviceParams: {:p}", params);
 
-        println!("  devParams    : {:p}", (*params).dev_params);
+        log::debug!("devParams: {:p}", (*params).dev_params);
 
-        println!("  rxChannelA   : {:p}", (*params).rx_channel_a);
+        log::debug!("rxChannelA: {:p}", (*params).rx_channel_a);
 
-        println!("  rxChannelB   : {:p}", (*params).rx_channel_b);
+        log::debug!("rxChannelB: {:p}", (*params).rx_channel_b);
 
         let mut sample_rate = 2_000_000u64;
 
@@ -1241,24 +1210,20 @@ let result = sdrplay_api_SelectDevice(device);
 
             sample_rate = dev_params.fs_freq.fs_hz.round() as u64;
 
-            println!();
-            println!("Paramètres Device :");
+            log::debug!("device parameters:");
 
-            println!("  sample rate : {:.0} Hz", dev_params.fs_freq.fs_hz);
+            log::debug!("  sample rate: {:.0} Hz", dev_params.fs_freq.fs_hz);
 
-            println!("  PPM         : {:.3}", dev_params.ppm);
+            log::debug!("  PPM: {:.3}", dev_params.ppm);
 
-            println!("  transfert   : {}", dev_params.mode);
+            log::debug!("  transfer mode: {}", dev_params.mode);
 
-            println!("  samples/pkt : {}", dev_params.samples_per_pkt);
+            log::debug!("  samples/packet: {}", dev_params.samples_per_pkt);
 
-            println!(
-                "  RF notch    : {}",
-                dev_params.rsp1a_params.rf_notch_enable
-            );
+            log::debug!("  RF notch: {}", dev_params.rsp1a_params.rf_notch_enable);
 
-            println!(
-                "  DAB notch   : {}",
+            log::debug!(
+                "  DAB notch: {}",
                 dev_params.rsp1a_params.rf_dab_notch_enable
             );
         }
@@ -1268,41 +1233,43 @@ let result = sdrplay_api_SelectDevice(device);
 
             frequency = rx.tuner_params.rf_freq.rf_hz.round() as u64;
 
-            println!();
-            println!("Paramètres RX A :");
+            log::debug!("RX A parameters:");
 
-            println!("  fréquence   : {:.0} Hz", rx.tuner_params.rf_freq.rf_hz);
+            log::debug!("  frequency: {:.0} Hz", rx.tuner_params.rf_freq.rf_hz);
 
-            println!("  bandwidth   : {} kHz", rx.tuner_params.bw_type);
+            log::debug!("  bandwidth: {} kHz", rx.tuner_params.bw_type);
 
-            println!("  IF          : {} kHz", rx.tuner_params.if_type);
+            log::debug!("  IF: {} kHz", rx.tuner_params.if_type);
 
-            println!("  LO mode     : {}", rx.tuner_params.lo_mode);
+            log::debug!("  LO mode: {}", rx.tuner_params.lo_mode);
 
-            println!("  Gain reduction : {} dB", rx.tuner_params.gain.gr_db);
+            log::debug!("  gain reduction: {} dB", rx.tuner_params.gain.gr_db);
 
-            println!("  LNA state : {}", rx.tuner_params.gain.lna_state);
+            log::debug!("  LNA state: {}", rx.tuner_params.gain.lna_state);
 
-            println!("  Min gain reduction : {} dB", rx.tuner_params.gain.min_gr);
+            log::debug!("  min gain reduction: {} dB", rx.tuner_params.gain.min_gr);
 
-            println!(
-                "  Gain values : curr={:.2} max={:.2} min={:.2}",
+            log::debug!(
+                "  gain values: curr={:.2} max={:.2} min={:.2}",
                 rx.tuner_params.gain.gain_vals.curr,
                 rx.tuner_params.gain.gain_vals.max,
                 rx.tuner_params.gain.gain_vals.min
             );
 
-            println!("  LNA state   : {}", rx.tuner_params.gain.lna_state);
+            log::debug!("  LNA state: {}", rx.tuner_params.gain.lna_state);
 
-            println!("  AGC         : {}", rx.ctrl_params.agc.enable);
+            log::debug!("  AGC: {}", rx.ctrl_params.agc.enable);
 
-            println!("  AGC setpoint: {} dBFS", rx.ctrl_params.agc.set_point_dbfs);
+            log::debug!(
+                "  AGC set-point: {} dBFS",
+                rx.ctrl_params.agc.set_point_dbfs
+            );
 
-            println!("  DC offset   : {}", rx.ctrl_params.dc_offset.dc_enable);
+            log::debug!("  DC offset: {}", rx.ctrl_params.dc_offset.dc_enable);
 
-            println!("  IQ balance  : {}", rx.ctrl_params.dc_offset.iq_enable);
+            log::debug!("  IQ balance: {}", rx.ctrl_params.dc_offset.iq_enable);
 
-            println!("  bias-T      : {}", rx.rsp1a_tuner_params.bias_t_enable);
+            log::debug!("  bias-T: {}", rx.rsp1a_tuner_params.bias_t_enable);
         }
 
         if let Some(context) = self.callback_context.as_ref() {
@@ -1321,8 +1288,6 @@ let result = sdrplay_api_SelectDevice(device);
 
         IQ_CALLBACK_COUNT.store(0, Ordering::Relaxed);
 
-        IQ_BLOCK_COUNT.store(0, Ordering::Relaxed);
-
         let context = self
             .callback_context
             .as_mut()
@@ -1338,13 +1303,12 @@ let result = sdrplay_api_SelectDevice(device);
             event_cb_fn: Some(event_callback),
         };
 
-        println!();
-        println!("Initialisation du RSP1B...");
+        log::info!("Initialising the receiver...");
 
         let result = sdrplay_api_Init(dev, &mut callbacks, context_ptr);
 
         if result != 0 {
-            return Err(anyhow!("sdrplay_api_Init() a échoué : {}", result));
+            return Err(anyhow!("sdrplay_api_Init() failed: {}", result));
         }
 
         self.initialized = true;
@@ -1355,8 +1319,8 @@ let result = sdrplay_api_SelectDevice(device);
         if verify_result == 0 && !verify_params.is_null() {
             if !(*verify_params).dev_params.is_null() {
                 let dp = &*(*verify_params).dev_params;
-                println!(
-                    ">>> POST-INIT DEV : mode={} samplesPkt={} fs={:.0}",
+                log::debug!(
+                    "POST-INIT DEV: mode={} samplesPkt={} fs={:.0}",
                     dp.mode,
                     dp.samples_per_pkt,
                     dp.fs_freq.fs_hz
@@ -1365,8 +1329,8 @@ let result = sdrplay_api_SelectDevice(device);
 
             if !(*verify_params).rx_channel_a.is_null() {
                 let rx = &*(*verify_params).rx_channel_a;
-                println!(
-                    ">>> POST-INIT RX : freq={:.0} IQenable={} DCenable={} AGC={} DECenable={} DECfactor={} WBS={} ADSB={}",
+                log::debug!(
+                    "POST-INIT RX: freq={:.0} IQenable={} DCenable={} AGC={} DECenable={} DECfactor={} WBS={} ADSB={}",
                     rx.tuner_params.rf_freq.rf_hz,
                     rx.ctrl_params.dc_offset.iq_enable,
                     rx.ctrl_params.dc_offset.dc_enable,
@@ -1379,27 +1343,27 @@ let result = sdrplay_api_SelectDevice(device);
             }
         }
 
-        println!("RSP1B initialisé.");
+        log::info!("Receiver initialised");
 
         Ok(())
     }
 
     pub fn set_frequency(&mut self, frequency_hz: u64) -> Result<()> {
         if !self.connected {
-            return Err(anyhow!("SDRplay non connecté"));
+            return Err(anyhow!("SDRplay not connected"));
         }
 
         if !self.device_selected {
-            return Err(anyhow!("Aucun périphérique SDRplay sélectionné"));
+            return Err(anyhow!("No SDRplay device selected"));
         }
 
         if !self.initialized {
-            return Err(anyhow!("RSP1B non initialisé"));
+            return Err(anyhow!("RSP1B not initialised"));
         }
 
         let device = self
             .selected_device
-            .ok_or_else(|| anyhow!("Périphérique SDRplay absent"))?;
+            .ok_or_else(|| anyhow!("SDRplay device missing"))?;
 
         unsafe {
             let mut params: *mut SdrplayDeviceParams = std::ptr::null_mut();
@@ -1407,7 +1371,7 @@ let result = sdrplay_api_SelectDevice(device);
             let result = sdrplay_api_GetDeviceParams(device.dev, &mut params);
 
             if result != 0 {
-                return Err(anyhow!("GetDeviceParams() a échoué : {}", result));
+                return Err(anyhow!("GetDeviceParams() failed: {}", result));
             }
 
             if params.is_null() {
@@ -1415,7 +1379,7 @@ let result = sdrplay_api_SelectDevice(device);
             }
 
             if (*params).rx_channel_a.is_null() {
-                return Err(anyhow!("rxChannelA est NULL"));
+                return Err(anyhow!("rxChannelA is NULL"));
             }
 
             let rx = &mut *(*params).rx_channel_a;
@@ -1428,15 +1392,14 @@ let result = sdrplay_api_SelectDevice(device);
             const TUNER_A: c_int = 1;
             const EXT1_NONE: c_int = 0;
 
-            // Un LNAstate qui n'existe pas dans la nouvelle bande est refusé
-            // par le service (OutOfRange) : on le ramène au maximum de la
-            // bande dans la même mise à jour.
+            // An LNAstate that does not exist in the new band is refused by the service
+            // (OutOfRange): bring it down to the band's maximum in the same update.
             let new_band = Band::from_hz(frequency_hz);
             let mut reason = UPDATE_TUNER_FRF;
 
             if rx.tuner_params.gain.lna_state > new_band.max_lna_state() {
-                println!(
-                    ">>> LNAstate {} invalide en bande {:?} : ramené à {}",
+                log::info!(
+                    "LNA state {} invalid in band {:?}: reduced to {}",
                     rx.tuner_params.gain.lna_state,
                     new_band,
                     new_band.max_lna_state()
@@ -1449,9 +1412,8 @@ let result = sdrplay_api_SelectDevice(device);
 
             let result = sdrplay_api_Update(device.dev, TUNER_A, reason, EXT1_NONE);
 
-
             if result != 0 {
-                return Err(anyhow!("sdrplay_api_Update(FRF) a échoué : {}", result));
+                return Err(anyhow!("sdrplay_api_Update(FRF) failed: {}", result));
             }
 
             let mut verify_params: *mut SdrplayDeviceParams = std::ptr::null_mut();
@@ -1462,8 +1424,8 @@ let result = sdrplay_api_SelectDevice(device);
             {
                 let verify_rx = &*(*verify_params).rx_channel_a;
 
-                println!(
-                    ">>> RF VERIFY : RF={:.0} Hz IF={} kHz BW={} kHz LO={} LNA={} gRdB={} curr={:.2} dB",
+                log::debug!(
+                    "RF VERIFY: RF={:.0} Hz IF={} kHz BW={} kHz LO={} LNA={} gRdB={} curr={:.2} dB",
                     verify_rx.tuner_params.rf_freq.rf_hz,
                     verify_rx.tuner_params.if_type,
                     verify_rx.tuner_params.bw_type,
@@ -1480,7 +1442,7 @@ let result = sdrplay_api_SelectDevice(device);
                     .store(frequency_hz, Ordering::Relaxed);
             }
 
-            println!("Fréquence RSP1B réglée à {} Hz", frequency_hz);
+            log::info!("RSP1B frequency set to {} Hz", frequency_hz);
         }
 
         Ok(())
@@ -1488,20 +1450,20 @@ let result = sdrplay_api_SelectDevice(device);
 
     pub fn set_sample_rate(&mut self, sample_rate_hz: u32) -> Result<()> {
         if !self.connected {
-            return Err(anyhow!("SDRplay non connecté"));
+            return Err(anyhow!("SDRplay not connected"));
         }
 
         if !self.device_selected {
-            return Err(anyhow!("Aucun périphérique SDRplay sélectionné"));
+            return Err(anyhow!("No SDRplay device selected"));
         }
 
         if !self.initialized {
-            return Err(anyhow!("RSP1B non initialisé"));
+            return Err(anyhow!("RSP1B not initialised"));
         }
 
         let device = self
             .selected_device
-            .ok_or_else(|| anyhow!("Périphérique SDRplay absent"))?;
+            .ok_or_else(|| anyhow!("SDRplay device missing"))?;
 
         unsafe {
             let mut params: *mut SdrplayDeviceParams = std::ptr::null_mut();
@@ -1509,7 +1471,7 @@ let result = sdrplay_api_SelectDevice(device);
             let result = sdrplay_api_GetDeviceParams(device.dev, &mut params);
 
             if result != 0 {
-                return Err(anyhow!("GetDeviceParams() a échoué : {}", result));
+                return Err(anyhow!("GetDeviceParams() failed: {}", result));
             }
 
             if params.is_null() {
@@ -1517,7 +1479,7 @@ let result = sdrplay_api_SelectDevice(device);
             }
 
             if (*params).dev_params.is_null() {
-                return Err(anyhow!("devParams est NULL"));
+                return Err(anyhow!("devParams is NULL"));
             }
 
             let dev_params = &mut *(*params).dev_params;
@@ -1532,13 +1494,12 @@ let result = sdrplay_api_SelectDevice(device);
             let result = sdrplay_api_Update(device.dev, TUNER_A, UPDATE_DEV_FS, EXT1_NONE);
 
             if result != 0 {
-                return Err(anyhow!("sdrplay_api_Update(FS) a échoué : {}", result));
+                return Err(anyhow!("sdrplay_api_Update(FS) failed: {}", result));
             }
 
-            // Diagnostic : relire les paramètres après Update(FS)
+            // Diagnostic: read the parameters back after Update(FS)
             let mut verify_params: *mut SdrplayDeviceParams = std::ptr::null_mut();
-            let verify_result =
-                sdrplay_api_GetDeviceParams(device.dev, &mut verify_params);
+            let verify_result = sdrplay_api_GetDeviceParams(device.dev, &mut verify_params);
 
             if verify_result == 0
                 && !verify_params.is_null()
@@ -1548,15 +1509,15 @@ let result = sdrplay_api_SelectDevice(device);
                 let verify_dev = &*(*verify_params).dev_params;
                 let verify_rx = &*(*verify_params).rx_channel_a;
 
-                println!(
-                    ">>> FS VERIFY : fsHz={} samplesPerPkt={} IF={} kHz BW={}",
+                log::debug!(
+                    "FS VERIFY: fsHz={} samplesPerPkt={} IF={} kHz BW={}",
                     verify_dev.fs_freq.fs_hz,
                     verify_dev.samples_per_pkt,
                     verify_rx.tuner_params.if_type,
                     verify_rx.tuner_params.bw_type
                 );
             } else {
-                println!(">>> FS VERIFY : GetDeviceParams() invalide après Update");
+                log::warn!("FS VERIFY: GetDeviceParams() invalid after Update");
             }
 
             if let Some(context) = self.callback_context.as_ref() {
@@ -1565,7 +1526,7 @@ let result = sdrplay_api_SelectDevice(device);
                     .store(sample_rate_hz as u64, Ordering::Relaxed);
             }
 
-            println!("Sample rate RSP1B réglé à {} Hz", sample_rate_hz);
+            log::info!("RSP1B sample rate set to {} Hz", sample_rate_hz);
         }
 
         Ok(())
@@ -1573,20 +1534,20 @@ let result = sdrplay_api_SelectDevice(device);
 
     pub fn set_bandwidth(&mut self, bandwidth_hz: u32) -> Result<()> {
         if !self.connected {
-            return Err(anyhow!("SDRplay non connecté"));
+            return Err(anyhow!("SDRplay not connected"));
         }
 
         if !self.device_selected {
-            return Err(anyhow!("Aucun périphérique SDRplay sélectionné"));
+            return Err(anyhow!("No SDRplay device selected"));
         }
 
         if !self.initialized {
-            return Err(anyhow!("RSP1B non initialisé"));
+            return Err(anyhow!("RSP1B not initialised"));
         }
 
         let device = self
             .selected_device
-            .ok_or_else(|| anyhow!("Périphérique SDRplay absent"))?;
+            .ok_or_else(|| anyhow!("SDRplay device missing"))?;
 
         let bw_type: c_int = match bandwidth_hz {
             200_000 => 200,
@@ -1599,10 +1560,7 @@ let result = sdrplay_api_SelectDevice(device);
             8_000_000 => 8000,
 
             _ => {
-                return Err(anyhow!(
-                    "Bande passante non supportée : {} Hz",
-                    bandwidth_hz
-                ));
+                return Err(anyhow!("Unsupported bandwidth: {} Hz", bandwidth_hz));
             }
         };
 
@@ -1612,7 +1570,7 @@ let result = sdrplay_api_SelectDevice(device);
             let result = sdrplay_api_GetDeviceParams(device.dev, &mut params);
 
             if result != 0 {
-                return Err(anyhow!("GetDeviceParams() a échoué : {}", result));
+                return Err(anyhow!("GetDeviceParams() failed: {}", result));
             }
 
             if params.is_null() {
@@ -1620,13 +1578,13 @@ let result = sdrplay_api_SelectDevice(device);
             }
 
             if (*params).rx_channel_a.is_null() {
-                return Err(anyhow!("rxChannelA est NULL"));
+                return Err(anyhow!("rxChannelA is NULL"));
             }
 
             let rx = &mut *(*params).rx_channel_a;
 
-            // Les clients rtl_tcp renvoient la bande passante à chaque
-            // connexion : inutile de reprogrammer le RSP si elle est déjà bonne.
+            // rtl_tcp clients resend the bandwidth at every connection: no need to
+            // reprogram the RSP if it is already right.
             if rx.tuner_params.bw_type == bw_type {
                 return Ok(());
             }
@@ -1641,143 +1599,122 @@ let result = sdrplay_api_SelectDevice(device);
             let result = sdrplay_api_Update(device.dev, TUNER_A, UPDATE_TUNER_BW_TYPE, EXT1_NONE);
 
             if result != 0 {
-                return Err(anyhow!("sdrplay_api_Update(BW_TYPE) a échoué : {}", result));
+                return Err(anyhow!("sdrplay_api_Update(BW_TYPE) failed: {}", result));
             }
-let mut verify_params: *mut SdrplayDeviceParams = std::ptr::null_mut();
+            let mut verify_params: *mut SdrplayDeviceParams = std::ptr::null_mut();
 
-let verify_result =
-    sdrplay_api_GetDeviceParams(device.dev, &mut verify_params);
+            let verify_result = sdrplay_api_GetDeviceParams(device.dev, &mut verify_params);
 
-if verify_result != 0 {
-    return Err(anyhow!(
-        "GetDeviceParams() après BW a échoué : {}",
-        verify_result
-    ));
-}
+            if verify_result != 0 {
+                return Err(anyhow!(
+                    "GetDeviceParams() after BW failed: {}",
+                    verify_result
+                ));
+            }
 
-if verify_params.is_null() {
-    return Err(anyhow!(
-        "GetDeviceParams() après BW retourne NULL"
-    ));
-}
+            if verify_params.is_null() {
+                return Err(anyhow!("GetDeviceParams() after BW returned NULL"));
+            }
 
-if (*verify_params).rx_channel_a.is_null() {
-    return Err(anyhow!(
-        "rxChannelA après BW est NULL"
-    ));
-}
+            if (*verify_params).rx_channel_a.is_null() {
+                return Err(anyhow!("rxChannelA after BW is NULL"));
+            }
 
-let verify_rx = &*(*verify_params).rx_channel_a;
+            let verify_rx = &*(*verify_params).rx_channel_a;
 
-println!(
-    "Bandwidth après Update = {} kHz",
-    verify_rx.tuner_params.bw_type
-);
-            println!("Bande passante RSP1B réglée à {} Hz", bandwidth_hz);
+            log::debug!(
+                "bandwidth after Update = {} kHz",
+                verify_rx.tuner_params.bw_type
+            );
+            log::info!("RSP1B bandwidth set to {} Hz", bandwidth_hz);
         }
 
         Ok(())
     }
     pub fn set_if_type(&mut self, if_type: IfType) -> Result<()> {
-    if !self.connected {
-        return Err(anyhow!("SDRplay non connecté"));
+        if !self.connected {
+            return Err(anyhow!("SDRplay not connected"));
+        }
+
+        if !self.device_selected {
+            return Err(anyhow!("No SDRplay device selected"));
+        }
+
+        if !self.initialized {
+            return Err(anyhow!("RSP1B not initialised"));
+        }
+
+        let if_khz: c_int = match if_type {
+            IfType::Zero => 0,
+            IfType::KHz450 => 450,
+            IfType::KHz1620 => 1620,
+            IfType::KHz2048 => 2048,
+        };
+
+        let device = self
+            .selected_device
+            .ok_or_else(|| anyhow!("SDRplay device missing"))?;
+
+        unsafe {
+            let mut params: *mut SdrplayDeviceParams = std::ptr::null_mut();
+
+            let result = sdrplay_api_GetDeviceParams(device.dev, &mut params);
+
+            if result != 0 {
+                return Err(anyhow!("GetDeviceParams() failed: {}", result));
+            }
+
+            if params.is_null() {
+                return Err(anyhow!("GetDeviceParams() retourne NULL"));
+            }
+
+            if (*params).rx_channel_a.is_null() {
+                return Err(anyhow!("rxChannelA is NULL"));
+            }
+
+            let rx = &mut *(*params).rx_channel_a;
+
+            rx.tuner_params.if_type = if_khz;
+
+            const UPDATE_TUNER_IF_TYPE: c_int = 0x00080000;
+            const TUNER_A: c_int = 1;
+            const EXT1_NONE: c_int = 0;
+
+            let result = sdrplay_api_Update(device.dev, TUNER_A, UPDATE_TUNER_IF_TYPE, EXT1_NONE);
+
+            if result != 0 {
+                return Err(anyhow!("sdrplay_api_Update(IF_TYPE) failed: {}", result));
+            }
+
+            // Read the parameters back after Update
+            let mut verify_params: *mut SdrplayDeviceParams = std::ptr::null_mut();
+
+            let verify_result = sdrplay_api_GetDeviceParams(device.dev, &mut verify_params);
+
+            if verify_result != 0 {
+                return Err(anyhow!(
+                    "GetDeviceParams() after Update IF failed: {}",
+                    verify_result
+                ));
+            }
+
+            if verify_params.is_null() {
+                return Err(anyhow!("GetDeviceParams() after Update IF returned NULL"));
+            }
+
+            if (*verify_params).rx_channel_a.is_null() {
+                return Err(anyhow!("rxChannelA after Update IF is NULL"));
+            }
+
+            let verify_rx = &*(*verify_params).rx_channel_a;
+
+            log::debug!("IF after Update = {} kHz", verify_rx.tuner_params.if_type);
+
+            log::info!("RSP1B IF set to {} kHz", if_khz);
+        }
+
+        Ok(())
     }
-
-    if !self.device_selected {
-        return Err(anyhow!("Aucun périphérique SDRplay sélectionné"));
-    }
-
-    if !self.initialized {
-        return Err(anyhow!("RSP1B non initialisé"));
-    }
-
-    let if_khz: c_int = match if_type {
-        IfType::Zero => 0,
-        IfType::KHz450 => 450,
-        IfType::KHz1620 => 1620,
-        IfType::KHz2048 => 2048,
-    };
-
-    let device = self
-        .selected_device
-        .ok_or_else(|| anyhow!("Périphérique SDRplay absent"))?;
-
-    unsafe {
-        let mut params: *mut SdrplayDeviceParams = std::ptr::null_mut();
-
-        let result = sdrplay_api_GetDeviceParams(device.dev, &mut params);
-
-        if result != 0 {
-            return Err(anyhow!("GetDeviceParams() a échoué : {}", result));
-        }
-
-        if params.is_null() {
-            return Err(anyhow!("GetDeviceParams() retourne NULL"));
-        }
-
-        if (*params).rx_channel_a.is_null() {
-            return Err(anyhow!("rxChannelA est NULL"));
-        }
-
-        let rx = &mut *(*params).rx_channel_a;
-
-        rx.tuner_params.if_type = if_khz;
-
-        const UPDATE_TUNER_IF_TYPE: c_int = 0x00080000;
-        const TUNER_A: c_int = 1;
-        const EXT1_NONE: c_int = 0;
-
-        let result = sdrplay_api_Update(
-            device.dev,
-            TUNER_A,
-            UPDATE_TUNER_IF_TYPE,
-            EXT1_NONE,
-        );
-
-        if result != 0 {
-            return Err(anyhow!(
-                "sdrplay_api_Update(IF_TYPE) a échoué : {}",
-                result
-            ));
-        }
-
-        // Relecture des paramètres après Update
-        let mut verify_params: *mut SdrplayDeviceParams = std::ptr::null_mut();
-
-        let verify_result =
-            sdrplay_api_GetDeviceParams(device.dev, &mut verify_params);
-
-        if verify_result != 0 {
-            return Err(anyhow!(
-                "GetDeviceParams() après Update IF a échoué : {}",
-                verify_result
-            ));
-        }
-
-        if verify_params.is_null() {
-            return Err(anyhow!(
-                "GetDeviceParams() après Update IF retourne NULL"
-            ));
-        }
-
-        if (*verify_params).rx_channel_a.is_null() {
-            return Err(anyhow!(
-                "rxChannelA après Update IF est NULL"
-            ));
-        }
-
-        let verify_rx = &*(*verify_params).rx_channel_a;
-
-        println!(
-            "IF après Update = {} kHz",
-            verify_rx.tuner_params.if_type
-        );
-
-        println!("IF RSP1B réglé à {} kHz", if_khz);
-    }
-
-    Ok(())
-}
 
     pub fn set_lo_mode_core(&mut self, lo_mode: LoMode) -> Result<()> {
         let value = match lo_mode {
@@ -1792,31 +1729,28 @@ println!(
 
     pub fn set_lo_mode(&mut self, lo_mode: i32) -> Result<()> {
         if !self.connected {
-            return Err(anyhow!("SDRplay non connecté"));
+            return Err(anyhow!("SDRplay not connected"));
         }
 
         if !self.device_selected {
-            return Err(anyhow!("Aucun périphérique SDRplay sélectionné"));
+            return Err(anyhow!("No SDRplay device selected"));
         }
 
         if !self.initialized {
-            return Err(anyhow!("RSP1B non initialisé"));
+            return Err(anyhow!("RSP1B not initialised"));
         }
 
         let lo_mode: c_int = match lo_mode {
             1 | 2 | 3 | 4 => lo_mode,
 
             _ => {
-                return Err(anyhow!(
-                    "Mode LO non supporté : {}",
-                    lo_mode
-                ));
+                return Err(anyhow!("Unsupported LO mode: {}", lo_mode));
             }
         };
 
         let device = self
             .selected_device
-            .ok_or_else(|| anyhow!("Périphérique SDRplay absent"))?;
+            .ok_or_else(|| anyhow!("SDRplay device missing"))?;
 
         unsafe {
             let mut params: *mut SdrplayDeviceParams = std::ptr::null_mut();
@@ -1824,7 +1758,7 @@ println!(
             let result = sdrplay_api_GetDeviceParams(device.dev, &mut params);
 
             if result != 0 {
-                return Err(anyhow!("GetDeviceParams() a échoué : {}", result));
+                return Err(anyhow!("GetDeviceParams() failed: {}", result));
             }
 
             if params.is_null() {
@@ -1832,7 +1766,7 @@ println!(
             }
 
             if (*params).rx_channel_a.is_null() {
-                return Err(anyhow!("rxChannelA est NULL"));
+                return Err(anyhow!("rxChannelA is NULL"));
             }
 
             let rx = &mut *(*params).rx_channel_a;
@@ -1843,137 +1777,120 @@ println!(
             const TUNER_A: c_int = 1;
             const EXT1_NONE: c_int = 0;
 
-            let result = sdrplay_api_Update(
-                device.dev,
-                TUNER_A,
-                UPDATE_TUNER_LO_MODE,
-                EXT1_NONE,
-            );
+            let result = sdrplay_api_Update(device.dev, TUNER_A, UPDATE_TUNER_LO_MODE, EXT1_NONE);
 
-if result != 0 {
-    return Err(anyhow!(
-        "sdrplay_api_Update(LO_MODE) a échoué : {}",
-        result
-    ));
-}
+            if result != 0 {
+                return Err(anyhow!("sdrplay_api_Update(LO_MODE) failed: {}", result));
+            }
 
-// Relecture des paramètres après Update
-let mut verify_params: *mut SdrplayDeviceParams = std::ptr::null_mut();
+            // Read the parameters back after Update
+            let mut verify_params: *mut SdrplayDeviceParams = std::ptr::null_mut();
 
-let verify_result =
-    sdrplay_api_GetDeviceParams(device.dev, &mut verify_params);
+            let verify_result = sdrplay_api_GetDeviceParams(device.dev, &mut verify_params);
 
-if verify_result != 0 {
-    return Err(anyhow!(
-        "GetDeviceParams() après Update LO a échoué : {}",
-        verify_result
-    ));
-}
+            if verify_result != 0 {
+                return Err(anyhow!(
+                    "GetDeviceParams() after Update LO failed: {}",
+                    verify_result
+                ));
+            }
 
-if verify_params.is_null() {
-    return Err(anyhow!(
-        "GetDeviceParams() après Update LO retourne NULL"
-    ));
-}
+            if verify_params.is_null() {
+                return Err(anyhow!("GetDeviceParams() after Update LO returned NULL"));
+            }
 
-if (*verify_params).rx_channel_a.is_null() {
-    return Err(anyhow!(
-        "rxChannelA après Update LO est NULL"
-    ));
-}
+            if (*verify_params).rx_channel_a.is_null() {
+                return Err(anyhow!("rxChannelA after Update LO is NULL"));
+            }
 
-let verify_rx = &*(*verify_params).rx_channel_a;
+            let verify_rx = &*(*verify_params).rx_channel_a;
 
-println!(
-    "LO après Update = {}",
-    verify_rx.tuner_params.lo_mode
-);
+            log::debug!("LO after Update = {}", verify_rx.tuner_params.lo_mode);
 
-println!("LO mode RSP1B réglé à {}", lo_mode);
+            log::info!("RSP1B LO mode set to {}", lo_mode);
         }
 
         Ok(())
     }
-/// Gain « rtl_tcp » (commande 0x04, échelle R820T 0..49.6 dB) -> pas de gain.
-pub fn set_gain(&mut self, gain_db: f32) -> Result<()> {
-    if !gain_db.is_finite() {
-        return Err(anyhow!("Gain invalide : {}", gain_db));
-    }
-
-    let tenths = (gain_db.max(0.0) * 10.0).round() as u32;
-
-    self.set_gain_index(gain::index_from_tenths_db(tenths))
-}
-
-/// Applique un pas de gain (0..=28) avec la table de la bande courante :
-/// LNAstate et gRdB sont envoyés ensemble dans une seule mise à jour.
-pub fn set_gain_index(&mut self, index: usize) -> Result<()> {
-    if !self.connected {
-        return Err(anyhow!("SDRplay non connecté"));
-    }
-
-    if !self.device_selected {
-        return Err(anyhow!("Aucun périphérique SDRplay sélectionné"));
-    }
-
-    if !self.initialized {
-        return Err(anyhow!("SDRplay non initialisé"));
-    }
-
-    let index = index.min(gain::GAIN_STEPS - 1);
-    let band = self.band;
-    let (lna_state, gr_db) = gain::settings(band, index);
-
-    let device = self.selected_device.ok_or_else(|| {
-        anyhow!("Périphérique SDRplay sélectionné introuvable")
-    })?;
-
-    unsafe {
-        let mut params: *mut SdrplayDeviceParams = std::ptr::null_mut();
-
-        let result = sdrplay_api_GetDeviceParams(device.dev, &mut params);
-
-        if result != 0 {
-            return Err(anyhow!("sdrplay_api_GetDeviceParams a échoué : {}", result));
+    /// rtl_tcp gain (command 0x04, R820T scale 0..49.6 dB) -> gain step.
+    pub fn set_gain(&mut self, gain_db: f32) -> Result<()> {
+        if !gain_db.is_finite() {
+            return Err(anyhow!("Gain invalide : {}", gain_db));
         }
 
-        if params.is_null() || (*params).rx_channel_a.is_null() {
-            return Err(anyhow!("Paramètres du canal RX A indisponibles"));
+        let tenths = (gain_db.max(0.0) * 10.0).round() as u32;
+
+        self.set_gain_index(gain::index_from_tenths_db(tenths))
+    }
+
+    /// Applies a gain step (0..=28) with the current band's table: LNAstate and
+    /// gRdB are sent together in a single update.
+    pub fn set_gain_index(&mut self, index: usize) -> Result<()> {
+        if !self.connected {
+            return Err(anyhow!("SDRplay not connected"));
         }
 
-        let rx = &mut *(*params).rx_channel_a;
-
-        rx.tuner_params.gain.lna_state = lna_state;
-        rx.tuner_params.gain.gr_db = gr_db;
-
-        const UPDATE_TUNER_GR: c_int = 0x00008000;
-        const TUNER_A: c_int = 1;
-        const EXT1_NONE: c_int = 0;
-
-        let result =
-            sdrplay_api_Update(device.dev, TUNER_A, UPDATE_TUNER_GR, EXT1_NONE);
-
-        if result != 0 {
-            return Err(anyhow!(
-                "sdrplay_api_Update(GR) a échoué (bande {:?}, pas {}, LNA={}, gRdB={}) : {}",
-                band,
-                index,
-                lna_state,
-                gr_db,
-                result
-            ));
+        if !self.device_selected {
+            return Err(anyhow!("No SDRplay device selected"));
         }
 
-        let mut verify_params: *mut SdrplayDeviceParams = std::ptr::null_mut();
+        if !self.initialized {
+            return Err(anyhow!("SDRplay not initialised"));
+        }
 
-        if sdrplay_api_GetDeviceParams(device.dev, &mut verify_params) == 0
-            && !verify_params.is_null()
-            && !(*verify_params).rx_channel_a.is_null()
-        {
-            let v = &*(*verify_params).rx_channel_a;
+        let index = index.min(gain::GAIN_STEPS - 1);
+        let band = self.band;
+        let (lna_state, gr_db) = gain::settings(band, index);
 
-            println!(
-                ">>> GAIN : bande={:?} pas={}/{} -> LNA={} gRdB={} | réel LNA={} gRdB={} curr={:.2} dB (AGC={})",
+        let device = self
+            .selected_device
+            .ok_or_else(|| anyhow!("Selected SDRplay device not found"))?;
+
+        unsafe {
+            let mut params: *mut SdrplayDeviceParams = std::ptr::null_mut();
+
+            let result = sdrplay_api_GetDeviceParams(device.dev, &mut params);
+
+            if result != 0 {
+                return Err(anyhow!("sdrplay_api_GetDeviceParams failed: {}", result));
+            }
+
+            if params.is_null() || (*params).rx_channel_a.is_null() {
+                return Err(anyhow!("RX channel A parameters unavailable"));
+            }
+
+            let rx = &mut *(*params).rx_channel_a;
+
+            rx.tuner_params.gain.lna_state = lna_state;
+            rx.tuner_params.gain.gr_db = gr_db;
+
+            const UPDATE_TUNER_GR: c_int = 0x00008000;
+            const TUNER_A: c_int = 1;
+            const EXT1_NONE: c_int = 0;
+
+            let result = sdrplay_api_Update(device.dev, TUNER_A, UPDATE_TUNER_GR, EXT1_NONE);
+
+            if result != 0 {
+                return Err(anyhow!(
+                    "sdrplay_api_Update(GR) failed (band {:?}, step {}, LNA={}, gRdB={}): {}",
+                    band,
+                    index,
+                    lna_state,
+                    gr_db,
+                    result
+                ));
+            }
+
+            let mut verify_params: *mut SdrplayDeviceParams = std::ptr::null_mut();
+
+            if sdrplay_api_GetDeviceParams(device.dev, &mut verify_params) == 0
+                && !verify_params.is_null()
+                && !(*verify_params).rx_channel_a.is_null()
+            {
+                let v = &*(*verify_params).rx_channel_a;
+
+                log::info!(
+                "GAIN: band={:?} step={}/{} -> LNA={} gRdB={} | actual LNA={} gRdB={} curr={:.2} dB (AGC={})",
                 band,
                 index,
                 gain::GAIN_STEPS - 1,
@@ -1984,571 +1901,278 @@ pub fn set_gain_index(&mut self, index: usize) -> Result<()> {
                 v.tuner_params.gain.gain_vals.curr,
                 self.agc_on
             );
-        }
-    }
-
-    self.gain_index = index;
-
-    // Comme rsp_tcp : après un changement de LNAstate, on ré-applique
-    // la configuration AGC (l'AGC reprend la main sur gRdB).
-    if self.agc_on {
-        self.set_agc(true)?;
-    }
-
-    Ok(())
-}
-
-/// Réglage d'un paramètre propre au RSP1A/RSP1B (bias-T, notch, PPM) :
-/// modifie la structure de paramètres, puis envoie l'Update correspondant.
-/// `apply` renvoie `true` si la valeur a réellement changé : sinon aucun
-/// Update n'est envoyé (les clients rtl_tcp renvoient ces commandes à chaque
-/// connexion, même à leur valeur par défaut).
-fn update_rsp1_setting(
-    &mut self,
-    label: &str,
-    reason: c_int,
-    apply: impl FnOnce(&mut SdrplayDevParams, &mut SdrplayRxChannelParams) -> bool,
-) -> Result<bool> {
-    if !self.connected {
-        return Err(anyhow!("SDRplay non connecté"));
-    }
-
-    if !self.device_selected {
-        return Err(anyhow!("Aucun périphérique SDRplay sélectionné"));
-    }
-
-    let device = self.selected_device.ok_or_else(|| {
-        anyhow!("Périphérique SDRplay sélectionné introuvable")
-    })?;
-
-    unsafe {
-        let mut params: *mut SdrplayDeviceParams = std::ptr::null_mut();
-
-        let result = sdrplay_api_GetDeviceParams(device.dev, &mut params);
-
-        if result != 0 {
-            return Err(anyhow!("sdrplay_api_GetDeviceParams a échoué : {}", result));
-        }
-
-        if params.is_null()
-            || (*params).dev_params.is_null()
-            || (*params).rx_channel_a.is_null()
-        {
-            return Err(anyhow!("Paramètres du périphérique indisponibles"));
-        }
-
-        let dev = &mut *(*params).dev_params;
-        let rx = &mut *(*params).rx_channel_a;
-
-        if !apply(dev, rx) {
-            return Ok(false);
-        }
-
-        // Avant sdrplay_api_Init, la structure sera lue à l'initialisation :
-        // pas d'Update possible ni nécessaire.
-        if self.initialized {
-            const TUNER_A: c_int = 1;
-            const EXT1_NONE: c_int = 0;
-
-            let result = sdrplay_api_Update(device.dev, TUNER_A, reason, EXT1_NONE);
-
-            if result != 0 {
-                return Err(anyhow!("sdrplay_api_Update({}) a échoué : {}", label, result));
-            }
-        }
-    }
-
-    Ok(true)
-}
-
-pub fn set_bias_t(&mut self, enabled: bool) -> Result<()> {
-    // sdrplay_api_Update_Rsp1a_BiasTControl
-    let changed = self.update_rsp1_setting("Bias-T", 0x0000_0010, |_, rx| {
-        let value = enabled as u8;
-        let changed = rx.rsp1a_tuner_params.bias_t_enable != value;
-        rx.rsp1a_tuner_params.bias_t_enable = value;
-        changed
-    })?;
-
-    if changed {
-        println!(">>> Bias-T : {}", if enabled { "activé (alimentation antenne)" } else { "désactivé" });
-    }
-
-    Ok(())
-}
-
-pub fn set_rf_notch(&mut self, enabled: bool) -> Result<()> {
-    // sdrplay_api_Update_Rsp1a_RfNotchControl : filtre réjecteur FM (88-108 MHz)
-    let changed = self.update_rsp1_setting("RF notch (FM)", 0x0000_0020, |dev, _| {
-        let value = enabled as u8;
-        let changed = dev.rsp1a_params.rf_notch_enable != value;
-        dev.rsp1a_params.rf_notch_enable = value;
-        changed
-    })?;
-
-    if changed {
-        println!(">>> RF notch (FM) : {}", if enabled { "activé" } else { "désactivé" });
-    }
-
-    Ok(())
-}
-
-pub fn set_dab_notch(&mut self, enabled: bool) -> Result<()> {
-    // sdrplay_api_Update_Rsp1a_RfDabNotchControl : filtre réjecteur DAB (bande III)
-    if enabled && self.band == Band::Band3 {
-        println!(
-            ">>> ATTENTION : le notch DAB atténue la bande III (174-240 MHz) : \
-             la réception DAB sera dégradée"
-        );
-    }
-
-    let changed = self.update_rsp1_setting("DAB notch", 0x0000_0040, |dev, _| {
-        let value = enabled as u8;
-        let changed = dev.rsp1a_params.rf_dab_notch_enable != value;
-        dev.rsp1a_params.rf_dab_notch_enable = value;
-        changed
-    })?;
-
-    if changed {
-        println!(">>> DAB notch : {}", if enabled { "activé" } else { "désactivé" });
-    }
-
-    Ok(())
-}
-
-pub fn set_ppm(&mut self, ppm: f64) -> Result<()> {
-    if !ppm.is_finite() || ppm.abs() > 1000.0 {
-        return Err(anyhow!("Correction PPM invalide : {}", ppm));
-    }
-
-    // sdrplay_api_Update_Dev_Ppm
-    let changed = self.update_rsp1_setting("PPM", 0x0000_0002, |dev, _| {
-        let changed = (dev.ppm - ppm).abs() > 1e-9;
-        dev.ppm = ppm;
-        changed
-    })?;
-
-    if changed {
-        println!(">>> Correction fréquence : {:.3} ppm", ppm);
-    }
-
-    Ok(())
-}
-
-/// À appeler régulièrement depuis la boucle principale (hors callbacks API) :
-/// acquitte les messages de surcharge et signale les surcharges ADC.
-pub fn service(&mut self) {
-    let ack = match self.callback_context.as_ref() {
-        Some(context) => context.overload_ack_pending.swap(false, Ordering::Relaxed),
-        None => return,
-    };
-
-    if ack && self.initialized {
-        if let Some(device) = self.selected_device {
-            const UPDATE_CTRL_OVERLOAD_ACK: c_int = 0x04000000;
-            const TUNER_A: c_int = 1;
-            const EXT1_NONE: c_int = 0;
-
-            let result = unsafe {
-                sdrplay_api_Update(
-                    device.dev,
-                    TUNER_A,
-                    UPDATE_CTRL_OVERLOAD_ACK,
-                    EXT1_NONE,
-                )
-            };
-
-            if result != 0 {
-                println!("Acquittement surcharge : Update a échoué ({})", result);
-            }
-        }
-    }
-
-    if let Some(context) = self.callback_context.as_ref() {
-        let events = context.overload_events.load(Ordering::Relaxed);
-
-        if events > 0
-            && self.last_overload_log.elapsed() >= std::time::Duration::from_secs(2)
-        {
-            context.overload_events.store(0, Ordering::Relaxed);
-            self.last_overload_log = Instant::now();
-
-            println!(
-                "!!! SURCHARGE ADC ({} fois) bande={:?} pas de gain={} : réduire le gain \
-                 (LNAstate plus élevé) ou activer l'AGC",
-                events, self.band, self.gain_index
-            );
-        }
-    }
-}
-pub fn set_gr_db_test(&mut self, gr_db: c_int) -> Result<()> {
-    if !self.connected {
-        return Err(anyhow!("SDRplay non connecté"));
-    }
-
-    if !self.device_selected {
-        return Err(anyhow!("Aucun périphérique SDRplay sélectionné"));
-    }
-
-    if !self.initialized {
-        return Err(anyhow!("RSP1B non initialisé"));
-    }
-
-    let device = self
-        .selected_device
-        .ok_or_else(|| anyhow!("Périphérique SDRplay absent"))?;
-
-    unsafe {
-        let mut params: *mut SdrplayDeviceParams = std::ptr::null_mut();
-
-        let result =
-            sdrplay_api_GetDeviceParams(device.dev, &mut params);
-
-        if result != 0 {
-            return Err(anyhow!(
-                "GetDeviceParams() a échoué : {}",
-                result
-            ));
-        }
-
-        if params.is_null() {
-            return Err(anyhow!(
-                "GetDeviceParams() a retourné NULL"
-            ));
-        }
-
-        if (*params).rx_channel_a.is_null() {
-            return Err(anyhow!("rxChannelA est NULL"));
-        }
-
-        let rx = &mut *(*params).rx_channel_a;
-
-        rx.tuner_params.gain.gr_db = gr_db;
-
-        const UPDATE_TUNER_GR: c_int = 0x00008000;
-        const TUNER_A: c_int = 1;
-        const EXT1_NONE: c_int = 0;
-
-        let result = sdrplay_api_Update(
-            device.dev,
-            TUNER_A,
-            UPDATE_TUNER_GR,
-            EXT1_NONE,
-        );
-
-        if result != 0 {
-            return Err(anyhow!(
-                "sdrplay_api_Update(GR) a échoué : {}",
-                result
-            ));
-        }
-
-
-        let mut stable_count = 0;
-        let mut last_gr_db = -1;
-
-        for _ in 0..100 {
-            std::thread::sleep(
-                std::time::Duration::from_millis(20)
-            );
-
-            let mut check_params: *mut SdrplayDeviceParams =
-                std::ptr::null_mut();
-
-            let check_result =
-                sdrplay_api_GetDeviceParams(
-                    device.dev,
-                    &mut check_params
-                );
-
-            if check_result != 0
-                || check_params.is_null()
-                || (*check_params).rx_channel_a.is_null()
-            {
-                continue;
-            }
-
-            let check_rx = &*(*check_params).rx_channel_a;
-            let current_gr_db =
-                check_rx.tuner_params.gain.gr_db;
-
-            if current_gr_db == last_gr_db {
-                stable_count += 1;
-            } else {
-                stable_count = 0;
-                last_gr_db = current_gr_db;
-            }
-
-            if stable_count >= 5 {
-                println!(
-                    "STABLE : gRdB={} après environ {} ms",
-                    current_gr_db,
-                    stable_count * 20
-                );
-                break;
             }
         }
 
-        let mut params_after: *mut SdrplayDeviceParams =
-            std::ptr::null_mut();
+        self.gain_index = index;
 
-        let result =
-            sdrplay_api_GetDeviceParams(device.dev, &mut params_after);
-
-        if result != 0 {
-            return Err(anyhow!(
-                "GetDeviceParams() après Update a échoué : {}",
-                result
-            ));
+        // Like rsp_tcp: after an LNAstate change, re-apply the AGC configuration
+        // (the AGC takes control of gRdB again).
+        if self.agc_on {
+            self.set_agc(true)?;
         }
 
-        if params_after.is_null()
-            || (*params_after).rx_channel_a.is_null()
-        {
-            return Err(anyhow!(
-                "rxChannelA après Update est NULL"
-            ));
-        }
-
-        let rx_after = &*(*params_after).rx_channel_a;
-
-        println!(
-            "GR TEST : demandé={} réel_gRdB={} LNA={} curr={:.2} max={:.2} min={:.2}",
-            gr_db,
-            rx_after.tuner_params.gain.gr_db,
-            rx_after.tuner_params.gain.lna_state,
-            rx_after.tuner_params.gain.gain_vals.curr,
-            rx_after.tuner_params.gain.gain_vals.max,
-            rx_after.tuner_params.gain.gain_vals.min
-        );
+        Ok(())
     }
 
-    Ok(())
-}
-    pub fn set_lna_state(&mut self, lna_state: u8) -> Result<()> {
+    /// Sets a setting specific to the RSP1A/RSP1B (bias-T, notch, PPM): modifies
+    /// the parameter structure, then sends the matching Update. `apply` returns
+    /// `true` if the value really changed: otherwise no Update is sent (rtl_tcp
+    /// clients resend these commands at every connection, even at their default
+    /// value).
+    fn update_rsp1_setting(
+        &mut self,
+        label: &str,
+        reason: c_int,
+        apply: impl FnOnce(&mut SdrplayDevParams, &mut SdrplayRxChannelParams) -> bool,
+    ) -> Result<bool> {
         if !self.connected {
-            return Err(anyhow!("SDRplay non connecté"));
+            return Err(anyhow!("SDRplay not connected"));
         }
 
         if !self.device_selected {
-            return Err(anyhow!("Aucun périphérique SDRplay sélectionné"));
-        }
-
-        if !self.initialized {
-            return Err(anyhow!("RSP1B non initialisé"));
+            return Err(anyhow!("No SDRplay device selected"));
         }
 
         let device = self
             .selected_device
-            .ok_or_else(|| anyhow!("Périphérique SDRplay absent"))?;
+            .ok_or_else(|| anyhow!("Selected SDRplay device not found"))?;
 
         unsafe {
             let mut params: *mut SdrplayDeviceParams = std::ptr::null_mut();
 
-            let result =
-                sdrplay_api_GetDeviceParams(device.dev, &mut params);
+            let result = sdrplay_api_GetDeviceParams(device.dev, &mut params);
 
             if result != 0 {
-                return Err(anyhow!(
-                    "GetDeviceParams() a échoué : {}",
-                    result
-                ));
+                return Err(anyhow!("sdrplay_api_GetDeviceParams failed: {}", result));
             }
 
-            if params.is_null() {
-                return Err(anyhow!(
-                    "GetDeviceParams() retourne NULL"
-                ));
+            if params.is_null()
+                || (*params).dev_params.is_null()
+                || (*params).rx_channel_a.is_null()
+            {
+                return Err(anyhow!("Device parameters unavailable"));
             }
 
-            if (*params).rx_channel_a.is_null() {
-                return Err(anyhow!(
-                    "rxChannelA est NULL"
-                ));
-            }
-
+            let dev = &mut *(*params).dev_params;
             let rx = &mut *(*params).rx_channel_a;
 
-            println!(
-                "LNA AVANT : lna_state={} gr_db={} sync_update={}",
-                rx.tuner_params.gain.lna_state,
-                rx.tuner_params.gain.gr_db,
-
-                rx.tuner_params.gain.sync_update
-            );
-
-            rx.tuner_params.gain.lna_state = lna_state;
-
-            println!(
-                "LNA DEMANDE : lna_state={} gr_db={}",
-                rx.tuner_params.gain.lna_state,
-                rx.tuner_params.gain.gr_db
-            );
-
-            const UPDATE_TUNER_GR: c_int = 0x00008000;
-            const TUNER_A: c_int = 1;
-            const EXT1_NONE: c_int = 0;
-
-            let result =
-                sdrplay_api_Update(
-                    device.dev,
-                    TUNER_A,
-                    UPDATE_TUNER_GR,
-                    EXT1_NONE,
-                );
-
-            println!("LNA UPDATE result={}", result);
-
-            if result != 0 {
-                return Err(anyhow!(
-                    "sdrplay_api_Update(LNA) a échoué : {}",
-                    result
-                ));
+            if !apply(dev, rx) {
+                return Ok(false);
             }
 
-            /*
-             * Relire les paramètres après Update pour vérifier
-             * ce que l'API SDRplay a réellement conservé.
-             */
-            let mut params_after: *mut SdrplayDeviceParams =
-                std::ptr::null_mut();
+            // Before sdrplay_api_Init the structure will be read at initialisation: no
+            // Update is possible or needed.
+            if self.initialized {
+                const TUNER_A: c_int = 1;
+                const EXT1_NONE: c_int = 0;
 
-            let result =
-                sdrplay_api_GetDeviceParams(
-                    device.dev,
-                    &mut params_after,
-                );
+                let result = sdrplay_api_Update(device.dev, TUNER_A, reason, EXT1_NONE);
 
-            if result != 0 {
-                return Err(anyhow!(
-                    "GetDeviceParams() après Update a échoué : {}",
-                    result
-                ));
+                if result != 0 {
+                    return Err(anyhow!("sdrplay_api_Update({}) failed: {}", label, result));
+                }
             }
+        }
 
-            if params_after.is_null() {
-                return Err(anyhow!(
-                    "GetDeviceParams() après Update retourne NULL"
-                ));
-            }
+        Ok(true)
+    }
 
-            if (*params_after).rx_channel_a.is_null() {
-                return Err(anyhow!(
-                    "rxChannelA après Update est NULL"
-                ));
-            }
+    pub fn set_bias_t(&mut self, enabled: bool) -> Result<()> {
+        // sdrplay_api_Update_Rsp1a_BiasTControl
+        let changed = self.update_rsp1_setting("Bias-T", 0x0000_0010, |_, rx| {
+            let value = enabled as u8;
+            let changed = rx.rsp1a_tuner_params.bias_t_enable != value;
+            rx.rsp1a_tuner_params.bias_t_enable = value;
+            changed
+        })?;
 
-            let rx_after = &*(*params_after).rx_channel_a;
-
-            println!(
-                "LNA APRÈS : lna_state={} gr_db={} sync_update={} curr={} max={} min={}",
-                rx_after.tuner_params.gain.lna_state,
-                rx_after.tuner_params.gain.gr_db,
-                rx_after.tuner_params.gain.sync_update,
-                rx_after.tuner_params.gain.gain_vals.curr,
-                rx_after.tuner_params.gain.gain_vals.max,
-                rx_after.tuner_params.gain.gain_vals.min
-            );
-
-            println!(
-                "État LNA RSP1B demandé : {}",
-                lna_state
+        if changed {
+            log::info!(
+                "Bias-T: {}",
+                if enabled {
+                    "enabled (antenna power)"
+                } else {
+                    "disabled"
+                }
             );
         }
 
         Ok(())
     }
 
-    pub fn set_agc(&mut self, enabled: bool) -> Result<()> {
+    pub fn set_rf_notch(&mut self, enabled: bool) -> Result<()> {
+        // sdrplay_api_Update_Rsp1a_RfNotchControl: FM broadcast notch (88-108 MHz)
+        let changed = self.update_rsp1_setting("RF notch (FM)", 0x0000_0020, |dev, _| {
+            let value = enabled as u8;
+            let changed = dev.rsp1a_params.rf_notch_enable != value;
+            dev.rsp1a_params.rf_notch_enable = value;
+            changed
+        })?;
 
+        if changed {
+            log::info!(
+                "RF notch (FM): {}",
+                if enabled { "enabled" } else { "disabled" }
+            );
+        }
+
+        Ok(())
+    }
+
+    pub fn set_dab_notch(&mut self, enabled: bool) -> Result<()> {
+        // sdrplay_api_Update_Rsp1a_RfDabNotchControl: DAB notch (band III)
+        if enabled && self.band == Band::Band3 {
+            log::warn!(
+                "DAB notch enabled in band III (174-240 MHz): DAB reception will be degraded"
+            );
+        }
+
+        let changed = self.update_rsp1_setting("DAB notch", 0x0000_0040, |dev, _| {
+            let value = enabled as u8;
+            let changed = dev.rsp1a_params.rf_dab_notch_enable != value;
+            dev.rsp1a_params.rf_dab_notch_enable = value;
+            changed
+        })?;
+
+        if changed {
+            log::info!(
+                "DAB notch: {}",
+                if enabled { "enabled" } else { "disabled" }
+            );
+        }
+
+        Ok(())
+    }
+
+    pub fn set_ppm(&mut self, ppm: f64) -> Result<()> {
+        if !ppm.is_finite() || ppm.abs() > 1000.0 {
+            return Err(anyhow!("Correction PPM invalide : {}", ppm));
+        }
+
+        // sdrplay_api_Update_Dev_Ppm
+        let changed = self.update_rsp1_setting("PPM", 0x0000_0002, |dev, _| {
+            let changed = (dev.ppm - ppm).abs() > 1e-9;
+            dev.ppm = ppm;
+            changed
+        })?;
+
+        if changed {
+            log::info!("Frequency correction: {:.3} ppm", ppm);
+        }
+
+        Ok(())
+    }
+
+    /// To be called regularly from the main loop (outside the API callbacks):
+    /// acknowledges overload messages and reports ADC overloads.
+    pub fn service(&mut self) {
+        let ack = match self.callback_context.as_ref() {
+            Some(context) => context.overload_ack_pending.swap(false, Ordering::Relaxed),
+            None => return,
+        };
+
+        if ack && self.initialized {
+            if let Some(device) = self.selected_device {
+                const UPDATE_CTRL_OVERLOAD_ACK: c_int = 0x04000000;
+                const TUNER_A: c_int = 1;
+                const EXT1_NONE: c_int = 0;
+
+                let result = unsafe {
+                    sdrplay_api_Update(device.dev, TUNER_A, UPDATE_CTRL_OVERLOAD_ACK, EXT1_NONE)
+                };
+
+                if result != 0 {
+                    log::warn!("overload acknowledgement: Update failed ({})", result);
+                }
+            }
+        }
+
+        if let Some(context) = self.callback_context.as_ref() {
+            let events = context.overload_events.load(Ordering::Relaxed);
+
+            if events > 0 && self.last_overload_log.elapsed() >= std::time::Duration::from_secs(2) {
+                context.overload_events.store(0, Ordering::Relaxed);
+                self.last_overload_log = Instant::now();
+
+                log::warn!(
+                "ADC OVERLOAD ({} times) band={:?} gain step={}: lower the gain (higher LNA state) or enable the AGC",
+                events, self.band, self.gain_index
+            );
+            }
+        }
+    }
+    pub fn set_agc(&mut self, enabled: bool) -> Result<()> {
         if !self.connected {
-            return Err(anyhow!("SDRplay non connecté"));
+            return Err(anyhow!("SDRplay not connected"));
         }
 
         if !self.device_selected {
-            return Err(anyhow!("Aucun périphérique SDRplay sélectionné"));
+            return Err(anyhow!("No SDRplay device selected"));
         }
 
         if !self.initialized {
-            return Err(anyhow!("RSP1B non initialisé"));
+            return Err(anyhow!("RSP1B not initialised"));
         }
 
         let device = self
             .selected_device
-            .ok_or_else(|| anyhow!("Périphérique SDRplay absent"))?;
+            .ok_or_else(|| anyhow!("SDRplay device missing"))?;
 
         unsafe {
             let mut params: *mut SdrplayDeviceParams = std::ptr::null_mut();
 
-            let result =
-                sdrplay_api_GetDeviceParams(device.dev, &mut params);
+            let result = sdrplay_api_GetDeviceParams(device.dev, &mut params);
 
             if result != 0 {
-                return Err(anyhow!(
-                    "GetDeviceParams() a échoué : {}",
-                    result
-                ));
+                return Err(anyhow!("GetDeviceParams() failed: {}", result));
             }
 
             if params.is_null() {
-                return Err(anyhow!(
-                    "GetDeviceParams() retourne NULL"
-                ));
+                return Err(anyhow!("GetDeviceParams() retourne NULL"));
             }
 
             if (*params).rx_channel_a.is_null() {
-                return Err(anyhow!(
-                    "rxChannelA est NULL"
-                ));
+                return Err(anyhow!("rxChannelA is NULL"));
             }
 
             let rx = &mut *(*params).rx_channel_a;
 
-/*
- * SDRplay AGC :
- *   0 = AGC_DISABLE
- *   1 = AGC_100HZ
- *   2 = AGC_50HZ
- *   3 = AGC_5HZ
- *   4 = AGC_CTRL_EN
- */
-if enabled {
-    // Même réglage que rsp_tcp (SDRplay) : schéma d'AGC « CTRL_EN » lent
-    // (constantes de temps 500 ms), adapté à un flux large bande comme le DAB,
-    // consigne -30 dBFS (plage valide -72..-20). L'ancien « 1 » = AGC_100HZ,
-    // boucle rapide (100 Hz) avec la consigne par défaut -60 dBFS.
-    rx.ctrl_params.agc.enable = 4;
-    rx.ctrl_params.agc.set_point_dbfs = -30;
-    rx.ctrl_params.agc.attack_ms = 500;
-    rx.ctrl_params.agc.decay_ms = 500;
-    rx.ctrl_params.agc.decay_delay_ms = 200;
-    rx.ctrl_params.agc.decay_threshold_db = 5;
-} else {
-    rx.ctrl_params.agc.enable = 0;
-}
+            /*
+             * SDRplay AGC :
+             *   0 = AGC_DISABLE
+             *   1 = AGC_100HZ
+             *   2 = AGC_50HZ
+             *   3 = AGC_5HZ
+             *   4 = AGC_CTRL_EN
+             */
+            if enabled {
+                // Same setting as rsp_tcp (SDRplay): slow "CTRL_EN" AGC scheme (500 ms time
+                // constants), suited to a wide-band signal such as DAB, set-point -30 dBFS
+                // (valid range -72..-20). The old "1" was AGC_100HZ, a fast loop (100 Hz)
+                // with the default -60 dBFS set-point.
+                rx.ctrl_params.agc.enable = 4;
+                rx.ctrl_params.agc.set_point_dbfs = -30;
+                rx.ctrl_params.agc.attack_ms = 500;
+                rx.ctrl_params.agc.decay_ms = 500;
+                rx.ctrl_params.agc.decay_delay_ms = 200;
+                rx.ctrl_params.agc.decay_threshold_db = 5;
+            } else {
+                rx.ctrl_params.agc.enable = 0;
+            }
 
-
-
-const UPDATE_CTRL_AGC: c_int = 0x01000000;
+            const UPDATE_CTRL_AGC: c_int = 0x01000000;
 
             const TUNER_A: c_int = 1;
             const EXT1_NONE: c_int = 0;
 
-            let result = sdrplay_api_Update(
-                device.dev,
-                TUNER_A,
-                UPDATE_CTRL_AGC,
-                EXT1_NONE,
-            );
+            let result = sdrplay_api_Update(device.dev, TUNER_A, UPDATE_CTRL_AGC, EXT1_NONE);
 
             if result != 0 {
-                return Err(anyhow!(
-                    "sdrplay_api_Update(AGC) a échoué : {}",
-                    result
-                ));
+                return Err(anyhow!("sdrplay_api_Update(AGC) failed: {}", result));
             }
 
-            // Vérification de la valeur AGC réellement conservée par SDRplay
+            // Check the AGC value SDRplay actually kept
             let mut verify_params: *mut SdrplayDeviceParams = std::ptr::null_mut();
 
             if sdrplay_api_GetDeviceParams(device.dev, &mut verify_params) == 0
@@ -2557,77 +2181,65 @@ const UPDATE_CTRL_AGC: c_int = 0x01000000;
             {
                 let verify_rx = &*(*verify_params).rx_channel_a;
 
-                println!(
-                    ">>> AGC VERIFY : demandé={} agc.enable={}",
+                log::debug!(
+                    "AGC VERIFY: requested={} agc.enable={}",
                     enabled,
                     verify_rx.ctrl_params.agc.enable
                 );
             }
 
-            println!(
-                "AGC RSP1B {}",
-                if enabled {
-                    "activé"
-                } else {
-                    "désactivé"
-                }
-            );
+            log::info!("RSP1B AGC {}", if enabled { "enabled" } else { "disabled" });
         }
 
         self.agc_on = enabled;
 
         Ok(())
     }
-pub fn disconnect(&mut self) {
-    if !self.connected {
-        return;
-    }
+    pub fn disconnect(&mut self) {
+        if !self.connected {
+            return;
+        }
 
-    unsafe {
-        if self.initialized {
-            if let Some(device) = self.selected_device {
-                let result = sdrplay_api_Uninit(device.dev);
+        unsafe {
+            if self.initialized {
+                if let Some(device) = self.selected_device {
+                    let result = sdrplay_api_Uninit(device.dev);
+
+                    if result != 0 {
+                        log::error!("sdrplay_api_Uninit() failed: {}", result);
+                    } else {
+                        log::info!("Receiver uninitialised");
+                    }
+                }
+
+                self.initialized = false;
+            }
+
+            if let Some(device) = self.selected_device.take() {
+                let result = sdrplay_api_ReleaseDevice(device.dev);
 
                 if result != 0 {
-                    eprintln!("sdrplay_api_Uninit() a échoué : {}", result);
+                    log::error!("ReleaseDevice() failed: {}", result);
                 } else {
-                    println!("RSP1B désinitialisé.");
+                    log::info!("Receiver released");
                 }
             }
 
-            self.initialized = false;
-        }
-
-        if let Some(device) = self.selected_device.take() {
-            let result = sdrplay_api_ReleaseDevice(device.dev);
+            let result = sdrplay_api_Close();
 
             if result != 0 {
-                eprintln!("ReleaseDevice() a échoué : {}", result);
+                log::error!("sdrplay_api_Close() failed: {}", result);
             } else {
-                println!("RSP1B libéré.");
+                log::info!("SDRplay API session closed");
             }
         }
 
-        let result = sdrplay_api_Close();
-
-        if result != 0 {
-            eprintln!("sdrplay_api_Close() a échoué : {}", result);
-        } else {
-            println!("Session API SDRplay fermée.");
-        }
+        self.connected = false;
+        self.device_selected = false;
+        self.initialized = false;
+        self.serial = None;
+        self.callback_context = None;
     }
-
-    self.connected = false;
-    self.device_selected = false;
-    self.initialized = false;
-    self.serial = None;
-    self.callback_context = None;
-}
-
-pub fn is_connected(&self) -> bool {
-    self.connected
-}
-
 }
 
 impl Backend for SdrplayBackend {
@@ -2642,7 +2254,7 @@ impl Backend for SdrplayBackend {
     fn apply_event(&mut self, event: &Event) -> Result<()> {
         SdrplayBackend::apply_event(self, event)
     }
-	fn take_iq_receiver(&mut self) -> Option<Receiver<IqBlock>> {
+    fn take_iq_receiver(&mut self) -> Option<Receiver<IqBlock>> {
         SdrplayBackend::take_iq_receiver(self)
     }
 

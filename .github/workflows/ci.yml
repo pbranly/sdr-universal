@@ -32,3 +32,26 @@ jobs:
 
       - name: Build without the SDRplay backend
         run: cargo check --no-default-features
+
+  # Style and lint checks. Informational for now (they do not fail the build):
+  # once they have run green for a while, remove `continue-on-error` to enforce them.
+  lint:
+    name: Format and lint
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        continue-on-error: true
+        run: cargo fmt --check
+
+      - name: Clippy
+        continue-on-error: true
+        run: cargo clippy --all-targets -- -D warnings

@@ -1,23 +1,22 @@
-//! Bande passante (filtre IF) demandée par les clients rtl_tcp.
+//! Bandwidth (IF filter) requested by rtl_tcp clients.
 //!
-//! AbracaDABra (version récente) envoie la commande 0x40 « SET_BANDWIDTH »
-//! avec une valeur en Hz (1 530 000 par défaut, ou la valeur choisie par
-//! l'utilisateur). Le RSP1B n'accepte que des largeurs discrètes.
+//! Recent AbracaDABra versions send command 0x40 "SET_BANDWIDTH" with a value
+//! in Hz (1,530,000 by default, or the value chosen by the user). The RSP1B
+//! only accepts discrete widths.
 
-/// Largeurs de filtre IF du RSP1B utilisables par la passerelle, en Hz,
-/// dans l'ordre croissant.
+/// RSP1B IF filter widths usable by the gateway, in Hz, in increasing order.
 ///
-/// Les largeurs de 5 à 8 MHz existent sur le RSP1B, mais elles supposent une
-/// fréquence d'échantillonnage plus élevée que les 2,048 MHz fixés par cette
-/// passerelle : on plafonne donc à 1,536 MHz, la largeur d'un ensemble DAB.
+/// Widths of 5 to 8 MHz exist on the RSP1B, but they assume a higher sample
+/// rate than the 2.048 MHz this gateway uses: the list is therefore capped at
+/// 1.536 MHz, the width of a DAB ensemble.
 pub const SUPPORTED_HZ: [u32; 4] = [200_000, 300_000, 600_000, 1_536_000];
 
-/// Largeur par défaut (0 ou valeur absente).
+/// Default width (0 or no value).
 pub const DEFAULT_HZ: u32 = 1_536_000;
 
-/// Plus petite largeur supportée supérieure ou égale à la demande, pour ne
-/// jamais couper une partie du signal demandé ; au-delà du maximum, le
-/// maximum. Une demande de 0 signifie « largeur par défaut ».
+/// Smallest supported width greater than or equal to the request, so that no
+/// part of the requested signal is cut; above the maximum, the maximum. A
+/// request of 0 means "default width".
 pub fn snap_hz(requested: u32) -> u32 {
     if requested == 0 {
         return DEFAULT_HZ;

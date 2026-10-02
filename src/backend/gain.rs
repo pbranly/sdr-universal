@@ -1,56 +1,87 @@
-//! Gestion du gain du RSP1B, bande par bande.
+//! RSP1B gain handling, band by band.
 //!
-//! Pourquoi ce module existe
-//! -------------------------
-//! Sur un RSP, le gain n'est pas un simple nombre de dB : il se règle avec DEUX
-//! paramètres, `LNAstate` et `gRdB` (gain reduction de l'étage IF, 20..=59 dB).
-//! La signification d'un `LNAstate` DÉPEND DE LA BANDE (spécification API v3.15,
-//! chapitre 5, « Gain Reduction Tables ») :
-//!   * moins de 60 MHz    : 7 états (0..=6)
-//!   * 60-420 MHz         : 10 états (0..=9)
-//!   * 420-1000 MHz       : 10 états (0..=9), atténuations différentes
-//!   * 1000-2000 MHz      : 9 états (0..=8)
-//! Un état qui n'existe pas dans la bande est refusé par le service (OutOfRange),
-//! et un état valide n'atténue pas la même quantité d'une bande à l'autre.
+//! Why this module exists
+//! ----------------------
+//! On an RSP, gain is not a single number of dB: it is set with TWO
+//! parameters, `LNAstate` and `gRdB` (gain reduction of the IF stage,
+//! 20..=59 dB). The meaning of an `LNAstate` DEPENDS ON THE BAND (API
+//! specification v3.15, chapter 5, "Gain Reduction Tables"):
+//!   * below 60 MHz    : 7 states (0..=6)
+//!   * 60-420 MHz      : 10 states (0..=9)
+//!   * 420-1000 MHz    : 10 states (0..=9), different attenuations
+//!   * 1000-2000 MHz   : 9 states (0..=8)
+//! A state that does not exist in the band is refused by the service
+//! (OutOfRange), and a valid state does not attenuate by the same amount from
+//! one band to another.
 //!
-//! Une table « dB -> (LNA, gRdB) » mesurée à une seule fréquence n'est donc valable
-//! que dans sa bande. Ici : 29 pas de gain (comme la liste R820T attendue par les
-//! clients rtl_tcp), avec une table PAR BANDE.
+//! A "dB -> (LNA, gRdB)" table measured at a single frequency is therefore only
+//! valid in its own band. Here: 29 gain steps (like the R820T gain list rtl_tcp
+//! clients expect), with one table PER BAND.
 //!
-//! Origine des valeurs : tables RSP1B de SDRplay `RSPTCPServer` (rsp_tcp.c :
-//! en-tête GNU GPL version 2 ou ultérieure, dépôt sous GPL-3.0), bornes de
-//! bandes identiques. Index 0 = gain minimal, index 28 = gain maximal
-//! (LNAstate 0, gRdB 20).
+//! Origin of the values: RSP1B tables from SDRplay's `RSPTCPServer` (rsp_tcp.c:
+//! GNU GPL version 2 or later header, repository under GPL-3.0), same band
+//! limits. Index 0 = minimum gain, index 28 = maximum gain (LNAstate 0,
+//! gRdB 20).
 
-/// Nombre de pas de gain exposés aux clients rtl_tcp.
+/// Number of gain steps exposed to rtl_tcp clients.
 pub const GAIN_STEPS: usize = 29;
 
-/// Pas de gain au démarrage : milieu de l'échelle.
+/// Gain step at start-up: middle of the scale.
 pub const DEFAULT_GAIN_INDEX: usize = 14;
 
 // < 60 MHz
-const AM_LNA: [u8; GAIN_STEPS] = [ 6,  6,  6,  6,  6,  6,  5,  5,  5,  5,  5,  4,  4,  3,  3,  3,  3,  3,  2,  2,  1,  0,  0,  0,  0,  0,  0,  0,  0];
-const AM_IFGR: [u8; GAIN_STEPS] = [59, 55, 52, 48, 45, 41, 57, 53, 49, 46, 42, 44, 40, 56, 52, 48, 45, 41, 44, 40, 43, 45, 41, 38, 34, 31, 27, 24, 20];
+const AM_LNA: [u8; GAIN_STEPS] = [
+    6, 6, 6, 6, 6, 6, 5, 5, 5, 5, 5, 4, 4, 3, 3, 3, 3, 3, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+];
+const AM_IFGR: [u8; GAIN_STEPS] = [
+    59, 55, 52, 48, 45, 41, 57, 53, 49, 46, 42, 44, 40, 56, 52, 48, 45, 41, 44, 40, 43, 45, 41, 38,
+    34, 31, 27, 24, 20,
+];
 
 // 60-120 MHz
-const VHF_LNA: [u8; GAIN_STEPS] = [ 9,  9,  9,  9,  9,  9,  8,  7,  7,  7,  7,  7,  6,  6,  5,  5,  4,  3,  2,  2,  1,  0,  0,  0,  0,  0,  0,  0,  0];
-const VHF_IFGR: [u8; GAIN_STEPS] = [59, 55, 52, 48, 45, 41, 42, 58, 54, 51, 47, 43, 46, 42, 44, 41, 43, 42, 44, 40, 43, 45, 42, 38, 34, 31, 27, 24, 20];
+const VHF_LNA: [u8; GAIN_STEPS] = [
+    9, 9, 9, 9, 9, 9, 8, 7, 7, 7, 7, 7, 6, 6, 5, 5, 4, 3, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+];
+const VHF_IFGR: [u8; GAIN_STEPS] = [
+    59, 55, 52, 48, 45, 41, 42, 58, 54, 51, 47, 43, 46, 42, 44, 41, 43, 42, 44, 40, 43, 45, 42, 38,
+    34, 31, 27, 24, 20,
+];
 
 // 120-250 MHz
-const BAND3_LNA: [u8; GAIN_STEPS] = [ 9,  9,  9,  9,  9,  9,  8,  7,  7,  7,  7,  7,  6,  6,  5,  5,  4,  3,  2,  2,  1,  0,  0,  0,  0,  0,  0,  0,  0];
-const BAND3_IFGR: [u8; GAIN_STEPS] = [59, 55, 52, 48, 45, 41, 42, 58, 54, 51, 47, 43, 46, 42, 44, 41, 43, 42, 44, 40, 43, 45, 42, 38, 34, 31, 27, 24, 20];
+const BAND3_LNA: [u8; GAIN_STEPS] = [
+    9, 9, 9, 9, 9, 9, 8, 7, 7, 7, 7, 7, 6, 6, 5, 5, 4, 3, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+];
+const BAND3_IFGR: [u8; GAIN_STEPS] = [
+    59, 55, 52, 48, 45, 41, 42, 58, 54, 51, 47, 43, 46, 42, 44, 41, 43, 42, 44, 40, 43, 45, 42, 38,
+    34, 31, 27, 24, 20,
+];
 
 // 250-420 MHz
-const BANDX_LNA: [u8; GAIN_STEPS] = [ 9,  9,  9,  9,  9,  9,  8,  7,  7,  7,  7,  7,  6,  6,  5,  5,  4,  3,  2,  2,  1,  0,  0,  0,  0,  0,  0,  0,  0];
-const BANDX_IFGR: [u8; GAIN_STEPS] = [59, 55, 52, 48, 45, 41, 42, 58, 54, 51, 47, 43, 46, 42, 44, 41, 43, 42, 44, 40, 43, 45, 42, 38, 34, 31, 27, 24, 20];
+const BANDX_LNA: [u8; GAIN_STEPS] = [
+    9, 9, 9, 9, 9, 9, 8, 7, 7, 7, 7, 7, 6, 6, 5, 5, 4, 3, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+];
+const BANDX_IFGR: [u8; GAIN_STEPS] = [
+    59, 55, 52, 48, 45, 41, 42, 58, 54, 51, 47, 43, 46, 42, 44, 41, 43, 42, 44, 40, 43, 45, 42, 38,
+    34, 31, 27, 24, 20,
+];
 
 // 420-1000 MHz
-const BAND45_LNA: [u8; GAIN_STEPS] = [ 9,  9,  9,  9,  9,  9,  8,  8,  8,  8,  8,  7,  6,  6,  5,  5,  4,  4,  2,  2,  1,  0,  0,  0,  0,  0,  0,  0,  0];
-const BAND45_IFGR: [u8; GAIN_STEPS] = [59, 55, 52, 48, 44, 41, 56, 52, 49, 45, 41, 44, 46, 42, 45, 41, 44, 40, 44, 40, 42, 46, 42, 38, 35, 31, 27, 24, 20];
+const BAND45_LNA: [u8; GAIN_STEPS] = [
+    9, 9, 9, 9, 9, 9, 8, 8, 8, 8, 8, 7, 6, 6, 5, 5, 4, 4, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+];
+const BAND45_IFGR: [u8; GAIN_STEPS] = [
+    59, 55, 52, 48, 44, 41, 56, 52, 49, 45, 41, 44, 46, 42, 45, 41, 44, 40, 44, 40, 42, 46, 42, 38,
+    35, 31, 27, 24, 20,
+];
 
 // 1000-2000 MHz
-const LBAND_LNA: [u8; GAIN_STEPS] = [ 8,  8,  8,  8,  8,  8,  7,  7,  7,  7,  7,  6,  5,  5,  4,  4,  3,  2,  2,  2,  1,  0,  0,  0,  0,  0,  0,  0,  0];
-const LBAND_IFGR: [u8; GAIN_STEPS] = [59, 55, 52, 48, 45, 41, 56, 53, 49, 46, 42, 43, 46, 42, 44, 41, 43, 48, 44, 40, 43, 45, 42, 38, 34, 31, 27, 24, 20];
+const LBAND_LNA: [u8; GAIN_STEPS] = [
+    8, 8, 8, 8, 8, 8, 7, 7, 7, 7, 7, 6, 5, 5, 4, 4, 3, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+];
+const LBAND_IFGR: [u8; GAIN_STEPS] = [
+    59, 55, 52, 48, 45, 41, 56, 53, 49, 46, 42, 43, 46, 42, 44, 41, 43, 48, 44, 40, 43, 45, 42, 38,
+    34, 31, 27, 24, 20,
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Band {
@@ -63,7 +94,7 @@ pub enum Band {
 }
 
 impl Band {
-    /// Bande de gain correspondant à une fréquence RF.
+    /// Gain band for an RF frequency.
     pub fn from_hz(hz: u64) -> Band {
         match hz {
             0..=59_999_999 => Band::Am,
@@ -86,22 +117,22 @@ impl Band {
         }
     }
 
-    /// Plus grand `LNAstate` valide dans cette bande (RSP1B).
+    /// Highest valid `LNAstate` in this band (RSP1B).
     pub fn max_lna_state(self) -> u8 {
-        // L'index 0 (gain minimal) utilise toujours l'état LNA le plus élevé.
+        // Index 0 (minimum gain) always uses the highest LNA state.
         self.tables().0[0]
     }
 }
 
-/// `(LNAstate, gRdB)` à programmer pour un pas de gain, dans une bande donnée.
+/// `(LNAstate, gRdB)` to program for a gain step, in a given band.
 pub fn settings(band: Band, index: usize) -> (u8, i32) {
     let index = index.min(GAIN_STEPS - 1);
     let (lna, ifgr) = band.tables();
     (lna[index], ifgr[index] as i32)
 }
 
-/// Convertit un gain rtl_tcp (commande 0x04, en dixièmes de dB, échelle R820T
-/// 0..=49.6 dB) en pas de gain 0..=28. Même quantification que rsp_tcp.
+/// Converts an rtl_tcp gain (command 0x04, in tenths of dB, R820T scale
+/// 0..=49.6 dB) into a gain step 0..=28. Same quantisation as rsp_tcp.
 pub fn index_from_tenths_db(tenths: u32) -> usize {
     let p = ((9 + tenths) / 5).min(100);
     (((GAIN_STEPS - 1) as f32 / 100.0) * p as f32) as usize
@@ -133,7 +164,7 @@ mod tests {
     #[test]
     fn all_values_valid_for_rsp1b() {
         for b in BANDS {
-            // Spec API 3.15 : nombre d'états LNA du RSP1B par bande.
+            // API spec 3.15: number of RSP1B LNA states per band.
             let spec_max = match b {
                 Band::Am => 6,
                 Band::LBand => 8,

@@ -9,7 +9,7 @@ pub trait Backend {
     fn apply_event(&mut self, event: &Event) -> Result<()>;
     fn take_iq_receiver(&mut self) -> Option<Receiver<IqBlock>>;
 
-    /// Tâches périodiques hors callbacks (acquittements, messages de surcharge...).
+    /// Periodic tasks outside the API callbacks (acknowledgements, overload messages...).
     fn service(&mut self) {}
 }
 

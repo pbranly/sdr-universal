@@ -1,45 +1,24 @@
-/// Traces détaillées (événements API, statistiques IQ, commandes brutes).
-/// Activées par `--verbose` ou la variable d'environnement SDR_VERBOSE=1.
-/// Les lignes utiles au diagnostic (GAIN, SURCHARGE, erreurs...) restent
-/// toujours affichées.
-pub static VERBOSE: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-
-macro_rules! vprintln {
-    ($($arg:tt)*) => {
-        if $crate::VERBOSE.load(std::sync::atomic::Ordering::Relaxed) {
-            println!($($arg)*);
-        }
-    };
-}
-
 mod backend;
 mod core;
+mod logging;
 mod output;
 
 use anyhow::Result;
 
 use backend::mock::MockBackend;
-use backend::Backend;
 #[cfg(feature = "sdrplay")]
 use backend::sdrplay::SdrplayBackend;
+use backend::Backend;
 use output::RtltcpSink;
 
 use core::{
-    Capabilities,
-    Command,
-    CommandResult,
-    GainMode,
-    IfType,
-    LoMode,
-    Receiver,
-    ReceiverMode,
+    Capabilities, Command, CommandResult, GainMode, IfType, LoMode, Receiver, ReceiverMode,
     ReceiverState,
 };
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
-/// Valeur d'une option `--nom valeur` de la ligne de commande.
+/// Value of a `--name value` command-line option.
 fn arg_value(name: &str) -> Option<String> {
     let args: Vec<String> = std::env::args().collect();
     args.iter()
@@ -47,9 +26,9 @@ fn arg_value(name: &str) -> Option<String> {
         .and_then(|i| args.get(i + 1).cloned())
 }
 
-/// Valeur d'une option (ligne de commande, sinon variable d'environnement) :
-/// absente -> `None` ; présente mais invalide -> erreur explicite (au lieu
-/// d'être ignorée en silence).
+/// Value of an option (command line, otherwise environment variable):
+/// absent -> `None`; present but invalid -> explicit error (instead of being
+/// silently ignored).
 fn option_value<T>(name: &str, env_var: Option<&str>) -> Result<Option<T>>
 where
     T: std::str::FromStr,
@@ -63,13 +42,14 @@ where
 
     match raw {
         None => Ok(None),
-        Some(text) => text.parse::<T>().map(Some).map_err(|err| {
-            anyhow::anyhow!("{} : valeur invalide « {} » ({})", name, text, err)
-        }),
+        Some(text) => text
+            .parse::<T>()
+            .map(Some)
+            .map_err(|err| anyhow::anyhow!("{}: invalid value '{}' ({})", name, text, err)),
     }
 }
 
-/// « sdr-universal 0.0.3 (git v0.0.3, x86_64-unknown-linux-gnu) »
+/// "sdr-universal 0.0.3 (git v0.0.3, x86_64-unknown-linux-gnu)"
 fn version_line() -> String {
     format!(
         "{} {} (git {}, {})",
@@ -92,27 +72,33 @@ fn print_help() {
     println!("    --bind ADDR        listen address (default 0.0.0.0, all interfaces; SDR_BIND)");
     println!("    -v, --verbose      detailed traces (same as SDR_VERBOSE=1)");
     println!("        --mock         simulated RSP1B, no hardware (same as SDR_MOCK=1)");
-    println!("        --mock-level D simulated antenna level in dBm (default -75, SDR_MOCK_LEVEL_DBM)");
+    println!(
+        "        --mock-level D simulated antenna level in dBm (default -75, SDR_MOCK_LEVEL_DBM)"
+    );
     println!("    -V, --version      print the version and exit");
     println!("    -h, --help         print this help and exit");
     println!();
     println!("ENVIRONMENT:");
     println!("    SDRPLAY_API_LIB    full path of libsdrplay_api.so (default: system search)");
+    println!("    RUST_LOG           log filter, e.g. warn or info,backend::sdrplay=debug (default: info)");
     println!();
     println!("Documentation: {}", env!("CARGO_PKG_REPOSITORY"));
 }
 
-/// Backend réel (SDRplay) ou factice (--mock / SDR_MOCK=1, sans matériel).
+/// Real (SDRplay) or mock backend (--mock / SDR_MOCK=1, no hardware).
 fn create_backend(mock: bool, mock_level_dbm: f64) -> Result<Box<dyn Backend>> {
     if mock {
-        println!(">>> MODE FACTICE : aucun matériel, niveau d'antenne simulé {} dBm", mock_level_dbm);
+        log::info!(
+            "MOCK MODE: no hardware, simulated antenna level {} dBm",
+            mock_level_dbm
+        );
         return Ok(Box::new(MockBackend::new(mock_level_dbm)));
     }
 
     #[cfg(feature = "sdrplay")]
     {
-        // Échec immédiat et lisible si l'API SDRplay n'est pas installée :
-        // la bibliothèque est chargée à l'exécution, pas à la compilation.
+        // Fail immediately, with a readable message, if the SDRplay API is not
+        // installed: the library is loaded at run time, not at build time.
         backend::sdrplay::ensure_api_loaded()?;
         Ok(Box::new(SdrplayBackend::new()))
     }
@@ -120,18 +106,22 @@ fn create_backend(mock: bool, mock_level_dbm: f64) -> Result<Box<dyn Backend>> {
     #[cfg(not(feature = "sdrplay"))]
     {
         Err(anyhow::anyhow!(
-            "Compilé sans le backend SDRplay : relancez avec --mock"
+            "Built without the SDRplay backend: run again with --mock"
         ))
     }
 }
 
-fn execute_command(receiver: &mut Receiver, backend: &mut dyn Backend, command: Command) -> Result<()> {
+fn execute_command(
+    receiver: &mut Receiver,
+    backend: &mut dyn Backend,
+    command: Command,
+) -> Result<()> {
     match receiver.handle_command(command)? {
         CommandResult::Event(event) => {
             backend.apply_event(&event)?;
         }
         other => {
-            println!("Résultat Core : {:?}", other);
+            log::debug!("Core result: {:?}", other);
         }
     }
 
@@ -139,7 +129,10 @@ fn execute_command(receiver: &mut Receiver, backend: &mut dyn Backend, command: 
 }
 
 fn main() -> Result<()> {
-    if std::env::args().skip(1).any(|a| a == "--version" || a == "-V") {
+    if std::env::args()
+        .skip(1)
+        .any(|a| a == "--version" || a == "-V")
+    {
         println!("{}", version_line());
         return Ok(());
     }
@@ -149,33 +142,36 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    if std::env::args().any(|a| a == "--verbose" || a == "-v")
-        || std::env::var("SDR_VERBOSE").map(|v| v == "1").unwrap_or(false)
-    {
-        VERBOSE.store(true, std::sync::atomic::Ordering::Relaxed);
-    }
+    let verbose = std::env::args().any(|a| a == "--verbose" || a == "-v")
+        || std::env::var("SDR_VERBOSE")
+            .map(|v| v == "1")
+            .unwrap_or(false);
 
-    println!("=================================");
-    println!(" SDR Universal {}", env!("CARGO_PKG_VERSION"));
-    println!(" rtl_tcp gateway for SDRplay");
-    println!("=================================");
-    println!();
+    logging::init(if verbose {
+        log::LevelFilter::Debug
+    } else {
+        log::LevelFilter::Info
+    });
+
+    log::info!(
+        "SDR Universal {} (rtl_tcp gateway for SDRplay)",
+        env!("CARGO_PKG_VERSION")
+    );
 
     let running = Arc::new(AtomicBool::new(true));
     {
         let running = Arc::clone(&running);
         ctrlc::set_handler(move || {
-            println!("\n>>> Ctrl+C reçu, arrêt propre en cours...");
+            log::info!("Ctrl+C received: clean shutdown in progress...");
             running.store(false, Ordering::SeqCst);
         })
-        .expect("Impossible d'installer le handler Ctrl+C");
+        .expect("cannot install the Ctrl+C handler");
     }
 
     let state = ReceiverState {
         frequency_hz: 100_000_000,
         sample_rate: 2_000_000,
-//        bandwidth_hz: 200_000,
-		bandwidth_hz: 1_536_000,
+        bandwidth_hz: 1_536_000,
         mode: ReceiverMode::Nfm,
         gain: 50.0,
         ..ReceiverState::default()
@@ -185,11 +181,7 @@ fn main() -> Result<()> {
 
     let mut receiver = Receiver::new(state, capabilities);
 
-println!(">>> TEST START IQ");
-
-
-
-    println!("Connexion au SDRplay...");
+    log::debug!("initialising...");
 
     let use_mock = std::env::args().any(|a| a == "--mock")
         || std::env::var("SDR_MOCK").map(|v| v == "1").unwrap_or(false);
@@ -199,7 +191,7 @@ println!(">>> TEST START IQ");
 
     if !mock_level_dbm.is_finite() {
         return Err(anyhow::anyhow!(
-            "--mock-level : valeur invalide « {} » (nombre fini attendu)",
+            "--mock-level: invalid value '{}' (finite number expected)",
             mock_level_dbm
         ));
     }
@@ -208,14 +200,14 @@ println!(">>> TEST START IQ");
 
     let control_port = rtltcp_port.checked_add(1).ok_or_else(|| {
         anyhow::anyhow!(
-            "--port {} : le port de contrôle (port + 1) dépasserait 65535",
+            "--port {}: the control port (port + 1) would exceed 65535",
             rtltcp_port
         )
     })?;
 
-    // Adresse d'écoute : toutes les interfaces par défaut (comportement
-    // historique), ou une adresse précise, par exemple 127.0.0.1 pour limiter
-    // l'accès à cette machine.
+    // Listen address: all interfaces by default (historical behaviour), or a
+    // specific address, for example 127.0.0.1 to restrict access to this
+    // machine.
     let bind_ip: std::net::IpAddr = option_value("--bind", Some("SDR_BIND"))?
         .unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED));
 
@@ -224,33 +216,25 @@ println!(">>> TEST START IQ");
 
     let mut radio = create_backend(use_mock, mock_level_dbm)?;
 
-    // Récupération du flux IQ avant la connexion au RSP1B.
-    // Le thread consommateur sera ainsi prêt avant l'arrivée
-    // des premiers blocs IQ.
-    let iq_rx = radio
-        .take_iq_receiver()
-        .expect("Receiver IQ indisponible");
+    // Take the IQ stream before connecting to the receiver, so that the
+    // consumer thread is ready before the first IQ blocks arrive.
+    let iq_rx = radio.take_iq_receiver().expect("IQ receiver unavailable");
 
-    let (rtltcp_tx, rtltcp_commands) =
-        RtltcpSink::start_server(&rtltcp_addr);
+    let (rtltcp_tx, rtltcp_commands) = RtltcpSink::start_server(&rtltcp_addr);
 
-    // Port de contrôle (rtl_tcp + 1) : gain réel du RSP pour le niveau RF
-    // d'AbracaDABra.
+    // Control port (rtl_tcp + 1): real RSP gain, for AbracaDABra's RF level.
     output::control::start_server(&control_addr);
 
     if bind_ip.is_unspecified() {
-        println!(
-            ">>> ATTENTION : écoute sur toutes les interfaces réseau, sans authentification ; \
-             --bind 127.0.0.1 limite l'accès à cette machine."
+        log::warn!(
+            "listening on all network interfaces, without authentication; \
+             --bind 127.0.0.1 restricts access to this machine"
         );
     }
 
     let requested_sample_rate = Arc::new(AtomicU32::new(2_000_000));
 
-    let rtltcp = RtltcpSink::new(
-        rtltcp_tx,
-        Arc::clone(&requested_sample_rate),
-    );
+    let rtltcp = RtltcpSink::new(rtltcp_tx, Arc::clone(&requested_sample_rate));
 
     std::thread::spawn(move || {
         let mut processor = core::IqProcessor::new();
@@ -261,8 +245,8 @@ println!(">>> TEST START IQ");
             processor.process(block);
         }
 
-        println!(
-            "<<< CORE IQ arrêté : blocs={} samples={}",
+        log::debug!(
+            "core IQ processing stopped: blocks={} samples={}",
             processor.blocks_processed(),
             processor.samples_processed()
         );
@@ -270,11 +254,12 @@ println!(">>> TEST START IQ");
 
     radio.connect()?;
 
-    println!();
-    println!("SDRplay connecté.");
+    log::info!("Receiver connected");
 
-    println!();
-    println!("--- SetFrequency({}) ---", receiver.state().frequency_hz);
+    log::debug!(
+        "configuring: frequency {} Hz",
+        receiver.state().frequency_hz
+    );
     let frequency_hz = receiver.state().frequency_hz;
     execute_command(
         &mut receiver,
@@ -282,14 +267,14 @@ println!(">>> TEST START IQ");
         Command::SetFrequency(frequency_hz),
     )?;
 
-    println!(">>> TEST SAMPLE RATE");
+    log::debug!("configuring: sample rate");
     execute_command(
         &mut receiver,
         radio.as_mut(),
         Command::SetSampleRate(2_000_000),
     )?;
 
-    println!(">>> TEST BANDWIDTH");
+    log::debug!("configuring: bandwidth");
     let bandwidth_hz = receiver.state().bandwidth_hz;
     execute_command(
         &mut receiver,
@@ -297,24 +282,27 @@ println!(">>> TEST START IQ");
         Command::SetBandwidth(bandwidth_hz),
     )?;
 
-    println!(">>> TEST IF = Zero");
+    log::debug!("configuring: IF = zero");
     execute_command(
         &mut receiver,
         radio.as_mut(),
         Command::SetIfType(IfType::Zero),
     )?;
 
-    println!(">>> TEST LO = Auto");
+    log::debug!("configuring: LO = auto");
     execute_command(
         &mut receiver,
         radio.as_mut(),
         Command::SetLoMode(LoMode::Auto),
     )?;
 
-    // Démarrage prudent : AGC matériel du RSP actif (pas de surcharge à la
-    // première connexion) et pas de gain médian de la bande courante.
-    // Les clients rtl_tcp reprennent ensuite la main (0x03 / 0x04 / 0x0D).
-    println!(">>> Gain initial : AGC RSP + pas {}", backend::gain::DEFAULT_GAIN_INDEX);
+    // Cautious start: the RSP hardware AGC is on (no overload on the first
+    // connection) and the gain step is the middle one of the current band.
+    // rtl_tcp clients then take over (0x03 / 0x04 / 0x0D).
+    log::info!(
+        "Initial gain: RSP hardware AGC + step {}",
+        backend::gain::DEFAULT_GAIN_INDEX
+    );
     execute_command(
         &mut receiver,
         radio.as_mut(),
@@ -326,84 +314,56 @@ println!(">>> TEST START IQ");
         Command::SetGainMode(GainMode::Automatic),
     )?;
 
-println!(">>> TEST START IQ APRÈS CONFIGURATION");
-    execute_command(
-        &mut receiver,
-        radio.as_mut(),
-        Command::StartIq,
-    )?;
+    log::debug!("starting the IQ stream");
+    execute_command(&mut receiver, radio.as_mut(), Command::StartIq)?;
 
-std::thread::sleep(std::time::Duration::from_millis(300));
+    std::thread::sleep(std::time::Duration::from_millis(300));
 
+    log::debug!("core state: {:#?}", receiver.state());
 
+    log::info!(
+        "Receiver configured: {} Hz, sample rate {} Hz, bandwidth {} Hz",
+        receiver.state().frequency_hz,
+        receiver.state().sample_rate,
+        receiver.state().bandwidth_hz
+    );
+    log::info!("Ready: waiting for RTL-TCP commands...");
 
-
-
-println!();
-println!("=================================");
-println!(" État Core");
-println!("=================================");
-
-println!("{:#?}", receiver.state());
-    println!();
-    println!("Le RSP1B doit maintenant être à :");
-    println!("  {} Hz", receiver.state().frequency_hz);
-    println!("  {} Hz de sample rate", receiver.state().sample_rate);
-    println!("  {} Hz de bande passante", receiver.state().bandwidth_hz);
-
-    println!();
-    println!("Flux IQ toujours disponible.");
-    println!();
-    println!("Test Core -> SDRplay terminé.");
-
-    println!();
-    println!("=================================");
-    println!(" Attente du flux IQ");
-	println!("=================================");
-	println!("Core actif - attente des commandes RTL-TCP...");
-
-	loop {
+    loop {
         if !running.load(Ordering::SeqCst) {
             break;
         }
 
-        // Acquittement des surcharges ADC (hors callbacks de l'API).
+        // Acknowledge ADC overloads (outside the API callbacks).
         radio.service();
 
         match rtltcp_commands.try_recv() {
             Ok(command) => {
-                vprintln!(">>> CORE reçoit RTL-TCP : {:?}", command);
+                log::trace!("core received RTL-TCP command: {:?}", command);
 
                 if let output::rtltcp::RtltcpCommand::SetSampleRate(rate) = command {
                     requested_sample_rate.store(rate, Ordering::Relaxed);
-                    println!(">>> RTL-TCP sample rate demandé : {} Hz", rate);
+                    log::info!("RTL-TCP sample rate requested: {} Hz", rate);
                 }
 
                 if let output::rtltcp::RtltcpCommand::SetSampleRate(rate) = command {
                     if rate < 2_000_000 {
-                        println!(
-                            ">>> RTL-TCP : {} Hz traité uniquement par le resampler",
-                            rate
-                        );
+                        log::info!("RTL-TCP: {} Hz handled by the resampler only", rate);
                         continue;
                     }
                 }
 
                 if let Some(core_command) = command.to_core_command() {
-                    vprintln!(">>> Command Core : {:?}", core_command);
+                    log::trace!("core command: {:?}", core_command);
 
-                    if let Err(e) = execute_command(
-                        &mut receiver,
-                        radio.as_mut(),
-                        core_command,
-                    ) {
-                        println!(">>> Erreur commande Core RTL-TCP : {}", e);
+                    if let Err(e) = execute_command(&mut receiver, radio.as_mut(), core_command) {
+                        log::warn!("Core command failed: {}", e);
                     }
                 }
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => {}
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                println!(">>> Canal RTL-TCP déconnecté");
+                log::warn!("RTL-TCP channel disconnected");
                 break;
             }
         }
@@ -411,14 +371,11 @@ println!("{:#?}", receiver.state());
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
 
-    println!();
-    println!("Fin du test IQ.");
-
-    println!("Libération du RSP1B avant fermeture...");
+    log::info!("Releasing the receiver before exit...");
     radio.disconnect();
 
-println!("Attente de libération USB...");
-std::thread::sleep(std::time::Duration::from_millis(2000));
+    log::debug!("waiting for the USB device to be released...");
+    std::thread::sleep(std::time::Duration::from_millis(2000));
 
-Ok(())
+    Ok(())
 }
