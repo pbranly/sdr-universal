@@ -818,35 +818,34 @@ unsafe extern "C" fn event_callback(
     log::debug!("SDRplay event: eventId={} tuner={}", event_id, tuner);
 
     // sdrplay_api_GainChange = 0
-    if event_id == 0 {
-        if !params.is_null() {
-            let gain = (*params).gain_params;
-            if !cb_context.is_null() {
-                let context = &*(cb_context as *const CallbackContext);
+    if event_id == 0 && !params.is_null() {
+        let gain = (*params).gain_params;
 
-                context
-                    .callback_gr_db
-                    .store(gain.gr_db as u64, Ordering::Relaxed);
+        if !cb_context.is_null() {
+            let context = &*(cb_context as *const CallbackContext);
 
-                context
-                    .lna_gr_db
-                    .store(gain.lna_gr_db as u64, Ordering::Relaxed);
+            context
+                .callback_gr_db
+                .store(gain.gr_db as u64, Ordering::Relaxed);
 
-                context
-                    .curr_gain_milli_db
-                    .store((gain.curr_gain * 1000.0) as u64, Ordering::Relaxed);
+            context
+                .lna_gr_db
+                .store(gain.lna_gr_db as u64, Ordering::Relaxed);
 
-                // Real total gain (LNA + IF) for the outputs: AbracaDABra's RF level.
-                crate::core::telemetry::set_total_gain_db(gain.curr_gain);
-            }
+            context
+                .curr_gain_milli_db
+                .store((gain.curr_gain * 1000.0) as u64, Ordering::Relaxed);
 
-            log::debug!(
-                "gain callback: gRdB={} lnaGRdB={} currGain={:.2} dB",
-                gain.gr_db,
-                gain.lna_gr_db,
-                gain.curr_gain
-            );
+            // Real total gain (LNA + IF) for the outputs: AbracaDABra's RF level.
+            crate::core::telemetry::set_total_gain_db(gain.curr_gain);
         }
+
+        log::debug!(
+            "gain callback: gRdB={} lnaGRdB={} currGain={:.2} dB",
+            gain.gr_db,
+            gain.lna_gr_db,
+            gain.curr_gain
+        );
     }
 
     // sdrplay_api_PowerOverloadChange = 1
@@ -1824,7 +1823,7 @@ impl SdrplayBackend {
         }
 
         let lo_mode: c_int = match lo_mode {
-            1 | 2 | 3 | 4 => lo_mode,
+            1..=4 => lo_mode,
 
             _ => {
                 return Err(anyhow!("Unsupported LO mode: {}", lo_mode));

@@ -10,6 +10,7 @@
 //!   * 60-420 MHz      : 10 states (0..=9)
 //!   * 420-1000 MHz    : 10 states (0..=9), different attenuations
 //!   * 1000-2000 MHz   : 9 states (0..=8)
+//!
 //! A state that does not exist in the band is refused by the service
 //! (OutOfRange), and a valid state does not attenuate by the same amount from
 //! one band to another.
@@ -90,6 +91,8 @@ pub enum Band {
     Band3,
     BandX,
     Band45,
+    // Named after SDRplay's own band names (AM, VHF, BAND3, BANDX, BAND45, LBAND).
+    #[allow(clippy::enum_variant_names)]
     LBand,
 }
 

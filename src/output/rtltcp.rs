@@ -79,7 +79,14 @@ impl RtltcpCommand {
                 ))
             }
 
-            Self::Unknown(_, _) => None,
+            Self::Unknown(opcode, value) => {
+                log::debug!(
+                    "ignoring unsupported rtl_tcp command 0x{:02X} (value {})",
+                    opcode,
+                    value
+                );
+                None
+            }
         }
     }
 }
@@ -438,7 +445,7 @@ impl RtltcpSink {
                             "RTL-TCP RECV #{}: len={} first={:02x} {:02x} {:02x} {:02x} | non7f={}",
                             recv_count,
                             data.len(),
-                            data.get(0).copied().unwrap_or(0),
+                            data.first().copied().unwrap_or(0),
                             data.get(1).copied().unwrap_or(0),
                             data.get(2).copied().unwrap_or(0),
                             data.get(3).copied().unwrap_or(0),
@@ -629,7 +636,7 @@ impl IqSink for RtltcpSink {
 
             log::debug!(
                 "    bytes: {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
-                rtl_iq.get(0).copied().unwrap_or(0),
+                rtl_iq.first().copied().unwrap_or(0),
                 rtl_iq.get(1).copied().unwrap_or(0),
                 rtl_iq.get(2).copied().unwrap_or(0),
                 rtl_iq.get(3).copied().unwrap_or(0),

@@ -129,8 +129,11 @@ fn execute_command(
                 backend.apply_event(event)?;
             }
         }
-        other => {
-            log::debug!("Core result: {:?}", other);
+        CommandResult::State(state) => {
+            log::debug!("core state: {:?}", state);
+        }
+        CommandResult::Capabilities(capabilities) => {
+            log::debug!("core capabilities: {:?}", capabilities);
         }
     }
 

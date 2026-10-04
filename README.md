@@ -73,8 +73,9 @@ API is missing. Without it you can still run the simulated receiver with `--mock
 
 ### From source
 
-Requirements: Linux and the [Rust toolchain](https://rustup.rs) (stable). Nothing
-from SDRplay is needed to *build*.
+Requirements: Linux and the [Rust toolchain](https://rustup.rs) (Rust 1.78 or newer;
+Ubuntu 24.04's packaged Rust 1.75 is too old, use `rustup` or the `rustc-1.91` /
+`cargo-1.91` packages). Nothing from SDRplay is needed to *build*.
 
 ```bash
 git clone https://github.com/pbranly/sdr-universal.git

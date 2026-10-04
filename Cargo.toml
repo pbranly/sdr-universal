@@ -2,6 +2,7 @@
 name = "sdr-universal"
 version = "0.0.3"
 edition = "2021"
+rust-version = "1.78"
 license = "GPL-3.0-or-later"
 description = "Gateway that exposes an SDRplay RSP1B as an rtl_tcp server"
 repository = "https://github.com/pbranly/sdr-universal"
