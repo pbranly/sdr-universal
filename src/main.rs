@@ -70,6 +70,10 @@ fn print_help() {
     println!("OPTIONS:");
     println!("    --port N           rtl_tcp port (default 1234); the control port is N+1");
     println!("    --bind ADDR        listen address (default 0.0.0.0, all interfaces; SDR_BIND)");
+    println!(
+        "        --no-mdns      do not advertise the server on the local network (SDR_MDNS=0)"
+    );
+    println!("        --name NAME    name shown to clients that discover the server (SDR_NAME)");
     println!("    -v, --verbose      detailed traces (same as SDR_VERBOSE=1)");
     println!("        --mock         simulated RSP1B, no hardware (same as SDR_MOCK=1)");
     println!(
@@ -119,6 +123,11 @@ fn execute_command(
     match receiver.handle_command(command)? {
         CommandResult::Event(event) => {
             backend.apply_event(&event)?;
+        }
+        CommandResult::Events(events) => {
+            for event in &events {
+                backend.apply_event(event)?;
+            }
         }
         other => {
             log::debug!("Core result: {:?}", other);
@@ -211,6 +220,17 @@ fn main() -> Result<()> {
     let bind_ip: std::net::IpAddr = option_value("--bind", Some("SDR_BIND"))?
         .unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED));
 
+    let mdns_disabled = std::env::args().any(|a| a == "--no-mdns")
+        || std::env::var("SDR_MDNS").map(|v| v == "0").unwrap_or(false);
+
+    let service_name: Option<String> = option_value("--name", Some("SDR_NAME"))?;
+
+    if let Some(name) = &service_name {
+        if name.trim().is_empty() {
+            return Err(anyhow::anyhow!("--name: the name must not be empty"));
+        }
+    }
+
     let rtltcp_addr = std::net::SocketAddr::new(bind_ip, rtltcp_port).to_string();
     let control_addr = std::net::SocketAddr::new(bind_ip, control_port).to_string();
 
@@ -231,6 +251,44 @@ fn main() -> Result<()> {
              --bind 127.0.0.1 restricts access to this machine"
         );
     }
+
+    // Let clients on the local network discover the server (mDNS / DNS-SD).
+    let advertisement = match output::mdns::decide(bind_ip, mdns_disabled) {
+        output::mdns::Decision::Advertise => {
+            let instance = output::mdns::truncate_label(&service_name.unwrap_or_else(|| {
+                output::mdns::default_instance_name(&output::mdns::local_hostname())
+            }));
+
+            match output::mdns::Advertisement::start(
+                &instance,
+                bind_ip,
+                rtltcp_port,
+                if use_mock { "mock" } else { "sdrplay" },
+            ) {
+                Ok(advertisement) => {
+                    log::info!(
+                        "mDNS: advertising '{}' ({}, port {})",
+                        instance,
+                        output::mdns::SERVICE_TYPE,
+                        rtltcp_port
+                    );
+                    Some(advertisement)
+                }
+                Err(e) => {
+                    log::warn!("mDNS advertisement unavailable: {}", e);
+                    None
+                }
+            }
+        }
+        output::mdns::Decision::Disabled => {
+            log::info!("mDNS advertisement disabled");
+            None
+        }
+        output::mdns::Decision::Loopback => {
+            log::info!("mDNS advertisement skipped: listening on the loopback interface only");
+            None
+        }
+    };
 
     let requested_sample_rate = Arc::new(AtomicU32::new(2_000_000));
 
@@ -342,22 +400,21 @@ fn main() -> Result<()> {
                 log::trace!("core received RTL-TCP command: {:?}", command);
 
                 if let output::rtltcp::RtltcpCommand::SetSampleRate(rate) = command {
-                    requested_sample_rate.store(rate, Ordering::Relaxed);
                     log::info!("RTL-TCP sample rate requested: {} Hz", rate);
                 }
 
-                if let output::rtltcp::RtltcpCommand::SetSampleRate(rate) = command {
-                    if rate < 2_000_000 {
-                        log::info!("RTL-TCP: {} Hz handled by the resampler only", rate);
-                        continue;
-                    }
-                }
-
-                if let Some(core_command) = command.to_core_command() {
+                if let Some(core_command) = command.to_core_command(receiver.state().sample_rate) {
                     log::trace!("core command: {:?}", core_command);
 
-                    if let Err(e) = execute_command(&mut receiver, radio.as_mut(), core_command) {
-                        log::warn!("Core command failed: {}", e);
+                    match execute_command(&mut receiver, radio.as_mut(), core_command.clone()) {
+                        Ok(()) => {
+                            // The receiver now delivers exactly this rate: the
+                            // output stage has nothing to resample.
+                            if let Command::SetSampleRate(rate) = core_command {
+                                requested_sample_rate.store(rate, Ordering::Relaxed);
+                            }
+                        }
+                        Err(e) => log::warn!("Core command failed: {}", e),
                     }
                 }
             }
@@ -369,6 +426,10 @@ fn main() -> Result<()> {
         }
 
         std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+
+    if let Some(advertisement) = advertisement {
+        advertisement.stop();
     }
 
     log::info!("Releasing the receiver before exit...");

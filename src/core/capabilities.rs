@@ -1,4 +1,4 @@
-use super::ReceiverMode;
+use super::{rates, ReceiverMode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IfType {
@@ -21,7 +21,9 @@ pub struct Capabilities {
     pub frequency_min_hz: u64,
     pub frequency_max_hz: u64,
 
-    pub sample_rates: Vec<u32>,
+    /// Output sample-rate range (hardware decimation covers the low end).
+    pub sample_rate_min_hz: u32,
+    pub sample_rate_max_hz: u32,
     pub modes: Vec<ReceiverMode>,
     pub bandwidths_hz: Vec<u32>,
 
@@ -48,11 +50,8 @@ impl Default for Capabilities {
             frequency_min_hz: 1,
             frequency_max_hz: 2_000_000_000,
 
-            sample_rates: vec![
-                250_000, 500_000, 1_000_000, 2_000_000,
-                2_048_000, // added: standard DAB / rtl_tcp rate
-                4_000_000, 6_000_000, 8_000_000, 10_000_000,
-            ],
+            sample_rate_min_hz: rates::MIN_OUTPUT_HZ,
+            sample_rate_max_hz: rates::MAX_OUTPUT_HZ,
 
             modes: vec![
                 ReceiverMode::Am,
@@ -65,9 +64,7 @@ impl Default for Capabilities {
                 ReceiverMode::Raw,
             ],
 
-            bandwidths_hz: vec![
-                200_000, 300_000, 600_000, 1_536_000, 5_000_000, 6_000_000, 7_000_000, 8_000_000,
-            ],
+            bandwidths_hz: rates::SUPPORTED_BANDWIDTHS_HZ.to_vec(),
 
             if_types: vec![
                 IfType::Zero,

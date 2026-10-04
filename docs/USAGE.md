@@ -25,6 +25,7 @@ after a short pause (about two seconds) that lets the USB device be released.
 |---|---|
 | `1234` (`--port N`) | rtl_tcp server: header, IQ stream, commands |
 | `1235` (`N + 1`) | Control port: real gain and overload state, used for the RF level |
+| UDP `5353` (multicast) | mDNS advertisement, see below |
 
 By default both listen on `0.0.0.0` (all interfaces) and have **no authentication**:
 anyone who can reach them can retune the receiver, and the gateway prints a warning at
@@ -42,6 +43,26 @@ The rtl_tcp server serves **one client at a time**; another client that connects
 waits until the first one disconnects. A client can disconnect and reconnect at any
 time without restarting the gateway. The control port accepts several connections.
 
+## Automatic discovery (mDNS)
+
+Unless disabled, the gateway advertises the rtl_tcp server on the local network as a
+`_rtl_tcp._tcp` service (mDNS / DNS-SD, the Bonjour / Avahi mechanism). Clients that
+browse for rtl_tcp servers, such as NyxScope, list it automatically; the others still
+connect by address. The advertisement carries the host name, the port and three
+properties: `software`, `version` and `backend` (`sdrplay` or `mock`).
+
+- The name shown to clients is `SDR Universal on <host>`; change it with `--name`.
+- It is **not** advertised when the server listens on the loopback interface only
+  (`--bind 127.0.0.1`), nor with `--no-mdns` (or `SDR_MDNS=0`).
+- The service is withdrawn when the gateway stops with Ctrl+C.
+- Advertising is best effort: if it cannot start (no multicast on the network
+  interface, for instance) the gateway logs `mDNS advertisement unavailable` and keeps
+  working.
+- Discovery uses UDP multicast on port 5353: allow it in the firewall if clients do not
+  see the server. This only helps discovery: connecting still needs the TCP ports.
+- Advertising makes the server easier to find on the network, and it has no
+  authentication (see above): disable it on networks you do not trust.
+
 ## Connecting a client
 
 Any client that speaks rtl_tcp can connect. The header sent on connection announces
@@ -56,14 +77,36 @@ or manual gain.
 
 ## Sample rate and bandwidth
 
-- Sample rates of **2 MS/s and above** are applied to the RSP when the core accepts
-  them (2, 2.048, 4, 6, 8, 10 MS/s). DAB clients use 2.048 MS/s.
-- Rates **below 2 MS/s** are produced by a linear resampler from the RSP stream
-  (no anti-aliasing filter).
-- The analog filter bandwidth requested by the client (`0x40`) is rounded **up** to
-  the nearest supported width — 200, 300, 600 or 1536 kHz — and capped at
-  1.536 MHz, the width of a DAB ensemble. Wider RSP filters exist but need higher
-  sample rates than the gateway uses.
+**Sample rate.** Any rate from **62.5 kHz to 10 MS/s** is accepted, which covers what
+RTL-SDR clients ask for (225 kHz, 1.024, 1.4, 1.8, 2.048, 2.4, 3.2 MS/s...). The RSP's
+ADC runs between 2 and 10 MS/s, so for a lower rate the gateway keeps the ADC at the
+nearest power-of-two multiple that is at least 2 MS/s and lets the API's hardware
+decimator (2 to 32) divide it down. The log shows the plan:
+
+```
+RSP1B sample rate set to 1024000 Hz (ADC 2048000 Hz, decimation 2)
+```
+
+This is the same method SDRplay's own `rsp_tcp` uses, and it gives properly filtered
+samples. A rate outside the range is refused with a warning (`Core command failed`)
+and the stream keeps its current rate.
+
+**Bandwidth.** The analog IF filter has fixed widths: 200, 300, 600 kHz, 1.536, 5, 6, 7
+and 8 MHz. When the sample rate changes, the gateway selects **the widest width that
+fits inside the new rate** (a wider filter would alias; a narrower one would roll the
+band edges off for nothing):
+
+| Sample rate | Filter |
+|---|---|
+| 2.048 MS/s (DAB), 2.4 MS/s, 3.2 MS/s | 1.536 MHz |
+| 1.024 MS/s | 600 kHz |
+| 250 kHz | 200 kHz |
+| 6 MS/s | 6 MHz |
+| 10 MS/s | 8 MHz |
+
+A client that wants another width sends it **after** the rate (rtl_tcp command `0x40`,
+sent by recent AbracaDABra versions). The request is rounded **up** to a supported
+width, but never above the widest one that fits the current rate.
 
 ## Reading the log
 
@@ -106,6 +149,7 @@ The messages to look for:
 | `Bias-T: …`, `RF notch (FM): …`, `DAB notch: …`, `Frequency correction: … ppm` | INFO | Hardware option changed (logged only when the value changes). |
 | `DAB notch enabled in band III …` | WARN | The DAB notch degrades DAB reception. |
 | `control port (RF level) listening on …` / `control client connected` | INFO | Control port state. |
+| `mDNS: advertising '…'` / `mDNS advertisement unavailable: …` | INFO / WARN | Discovery state. |
 | `RTL-TCP client connected` / `RTL-TCP client disconnected` | INFO | rtl_tcp client state. |
 | `Core command failed: …` | WARN | A command from a client was refused (for example a value out of range). |
 

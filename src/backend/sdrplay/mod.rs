@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::core::{Event, IfType, IqBlock, IqReblocker, IqSample, LoMode};
+use crate::core::{rates, Event, IfType, IqBlock, IqReblocker, IqSample, LoMode};
 
 use crate::backend::gain;
 use gain::Band;
@@ -313,6 +313,8 @@ struct CallbackContext {
     overload_ack_pending: AtomicBool,
     /// Number of overload entries since the last message was logged.
     overload_events: AtomicU64,
+    /// Set by the stream callback when the service reports a sample-rate change.
+    fs_changed: AtomicBool,
 }
 
 const _: () = {
@@ -618,6 +620,10 @@ unsafe extern "C" fn stream_a_callback(
     }
     let callback_count = IQ_CALLBACK_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
 
+    if !params.is_null() && (*params).fs_changed != 0 {
+        context.fs_changed.store(true, Ordering::Relaxed);
+    }
+
     if !params.is_null()
         && ((*params).gr_changed != 0
             || (*params).rf_changed != 0
@@ -904,6 +910,7 @@ impl SdrplayBackend {
             overload: AtomicBool::new(false),
             overload_ack_pending: AtomicBool::new(false),
             overload_events: AtomicU64::new(0),
+            fs_changed: AtomicBool::new(false),
         });
 
         Self {
@@ -930,7 +937,7 @@ impl SdrplayBackend {
         let context = self
             .callback_context
             .as_ref()
-            .ok_or_else(|| anyhow!("Contexte callback IQ absent"))?;
+            .ok_or_else(|| anyhow!("IQ callback context missing"))?;
 
         context.iq_enabled.store(true, Ordering::Relaxed);
         log::info!("IQ stream started");
@@ -942,7 +949,7 @@ impl SdrplayBackend {
         let context = self
             .callback_context
             .as_ref()
-            .ok_or_else(|| anyhow!("Contexte callback IQ absent"))?;
+            .ok_or_else(|| anyhow!("IQ callback context missing"))?;
 
         context.iq_enabled.store(false, Ordering::Relaxed);
         log::info!("IQ stream stopped");
@@ -972,6 +979,11 @@ impl SdrplayBackend {
 
             Event::SampleRateChanged(sample_rate_hz) => {
                 self.set_sample_rate(*sample_rate_hz)?;
+
+                // rsp_tcp re-applies its AGC settings after a rate change.
+                if self.agc_on {
+                    self.set_agc(true)?;
+                }
             }
 
             Event::BandwidthChanged(bandwidth_hz) => {
@@ -1291,7 +1303,7 @@ impl SdrplayBackend {
         let context = self
             .callback_context
             .as_mut()
-            .ok_or_else(|| anyhow!("Contexte callback IQ absent"))?;
+            .ok_or_else(|| anyhow!("IQ callback context missing"))?;
 
         let context_ptr = context.as_mut() as *mut CallbackContext as *mut c_void;
 
@@ -1375,7 +1387,7 @@ impl SdrplayBackend {
             }
 
             if params.is_null() {
-                return Err(anyhow!("GetDeviceParams() retourne NULL"));
+                return Err(anyhow!("GetDeviceParams() returned NULL"));
             }
 
             if (*params).rx_channel_a.is_null() {
@@ -1448,7 +1460,13 @@ impl SdrplayBackend {
         Ok(())
     }
 
+    /// Sets the OUTPUT sample rate. Below 2 MS/s the ADC stays at the nearest
+    /// power-of-two multiple (at least 2 MS/s) and the API's decimator divides
+    /// it down (see `core::rates`), like SDRplay's rsp_tcp.
     pub fn set_sample_rate(&mut self, sample_rate_hz: u32) -> Result<()> {
+        let plan = rates::plan(sample_rate_hz)
+            .ok_or_else(|| anyhow!("Unsupported sample rate: {} Hz", sample_rate_hz))?;
+
         if !self.connected {
             return Err(anyhow!("SDRplay not connected"));
         }
@@ -1475,26 +1493,86 @@ impl SdrplayBackend {
             }
 
             if params.is_null() {
-                return Err(anyhow!("GetDeviceParams() retourne NULL"));
+                return Err(anyhow!("GetDeviceParams() returned NULL"));
             }
 
             if (*params).dev_params.is_null() {
                 return Err(anyhow!("devParams is NULL"));
             }
 
-            let dev_params = &mut *(*params).dev_params;
+            if (*params).rx_channel_a.is_null() {
+                return Err(anyhow!("rxChannelA is NULL"));
+            }
 
-            dev_params.fs_freq.fs_hz = sample_rate_hz as f64;
+            let dev_params = &mut *(*params).dev_params;
+            let rx = &mut *(*params).rx_channel_a;
+
+            dev_params.fs_freq.fs_hz = plan.adc_hz as f64;
+
+            if plan.decimation > 1 {
+                rx.ctrl_params.decimation.enable = 1;
+                rx.ctrl_params.decimation.decimation_factor = plan.decimation as u8;
+                rx.ctrl_params.decimation.wide_band_signal = 1;
+            } else {
+                rx.ctrl_params.decimation.enable = 0;
+            }
 
             const UPDATE_DEV_FS: c_int = 0x00000001;
+            const UPDATE_CTRL_DECIMATION: c_int = 0x00800000;
 
             const TUNER_A: c_int = 1;
             const EXT1_NONE: c_int = 0;
 
-            let result = sdrplay_api_Update(device.dev, TUNER_A, UPDATE_DEV_FS, EXT1_NONE);
+            // Cleared before the update, set again by the stream callback once
+            // the service reports the new rate.
+            let waiting_for_callback = self
+                .callback_context
+                .as_ref()
+                .map(|context| {
+                    context.fs_changed.store(false, Ordering::Relaxed);
+                    context.iq_enabled.load(Ordering::Relaxed)
+                })
+                .unwrap_or(false);
+
+            let result = sdrplay_api_Update(
+                device.dev,
+                TUNER_A,
+                UPDATE_DEV_FS | UPDATE_CTRL_DECIMATION,
+                EXT1_NONE,
+            );
 
             if result != 0 {
                 return Err(anyhow!("sdrplay_api_Update(FS) failed: {}", result));
+            }
+
+            // Like rsp_tcp, wait (at most 500 ms) until the new rate is in
+            // effect before touching anything else. Only possible while the
+            // stream runs: the callback is what reports the change.
+            if waiting_for_callback {
+                let started = std::time::Instant::now();
+
+                loop {
+                    let changed = self
+                        .callback_context
+                        .as_ref()
+                        .map(|context| context.fs_changed.load(Ordering::Relaxed))
+                        .unwrap_or(true);
+
+                    if changed {
+                        log::debug!(
+                            "sample rate in effect after {} ms",
+                            started.elapsed().as_millis()
+                        );
+                        break;
+                    }
+
+                    if started.elapsed() > std::time::Duration::from_millis(500) {
+                        log::warn!("sample rate change not confirmed by the service after 500 ms");
+                        break;
+                    }
+
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
             }
 
             // Diagnostic: read the parameters back after Update(FS)
@@ -1523,10 +1601,15 @@ impl SdrplayBackend {
             if let Some(context) = self.callback_context.as_ref() {
                 context
                     .sample_rate
-                    .store(sample_rate_hz as u64, Ordering::Relaxed);
+                    .store(plan.output_hz as u64, Ordering::Relaxed);
             }
 
-            log::info!("RSP1B sample rate set to {} Hz", sample_rate_hz);
+            log::info!(
+                "RSP1B sample rate set to {} Hz (ADC {} Hz, decimation {})",
+                plan.output_hz,
+                plan.adc_hz,
+                plan.decimation
+            );
         }
 
         Ok(())
@@ -1574,7 +1657,7 @@ impl SdrplayBackend {
             }
 
             if params.is_null() {
-                return Err(anyhow!("GetDeviceParams() retourne NULL"));
+                return Err(anyhow!("GetDeviceParams() returned NULL"));
             }
 
             if (*params).rx_channel_a.is_null() {
@@ -1665,7 +1748,7 @@ impl SdrplayBackend {
             }
 
             if params.is_null() {
-                return Err(anyhow!("GetDeviceParams() retourne NULL"));
+                return Err(anyhow!("GetDeviceParams() returned NULL"));
             }
 
             if (*params).rx_channel_a.is_null() {
@@ -1762,7 +1845,7 @@ impl SdrplayBackend {
             }
 
             if params.is_null() {
-                return Err(anyhow!("GetDeviceParams() retourne NULL"));
+                return Err(anyhow!("GetDeviceParams() returned NULL"));
             }
 
             if (*params).rx_channel_a.is_null() {
@@ -1815,7 +1898,7 @@ impl SdrplayBackend {
     /// rtl_tcp gain (command 0x04, R820T scale 0..49.6 dB) -> gain step.
     pub fn set_gain(&mut self, gain_db: f32) -> Result<()> {
         if !gain_db.is_finite() {
-            return Err(anyhow!("Gain invalide : {}", gain_db));
+            return Err(anyhow!("Invalid gain: {}", gain_db));
         }
 
         let tenths = (gain_db.max(0.0) * 10.0).round() as u32;
@@ -2047,7 +2130,7 @@ impl SdrplayBackend {
 
     pub fn set_ppm(&mut self, ppm: f64) -> Result<()> {
         if !ppm.is_finite() || ppm.abs() > 1000.0 {
-            return Err(anyhow!("Correction PPM invalide : {}", ppm));
+            return Err(anyhow!("Invalid PPM correction: {}", ppm));
         }
 
         // sdrplay_api_Update_Dev_Ppm
@@ -2129,7 +2212,7 @@ impl SdrplayBackend {
             }
 
             if params.is_null() {
-                return Err(anyhow!("GetDeviceParams() retourne NULL"));
+                return Err(anyhow!("GetDeviceParams() returned NULL"));
             }
 
             if (*params).rx_channel_a.is_null() {

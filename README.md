@@ -25,6 +25,12 @@ It is written in Rust and talks to the receiver through the official SDRplay API
 
 - **rtl_tcp server** compatible with RTL-SDR clients, including the extensions used
   by AbracaDABra (gain by index `0x0D`, bandwidth `0x40`).
+- **Any sample rate from 62.5 kHz to 10 MS/s**, as RTL-SDR clients expect (1.024,
+  1.4, 2.4, 3.2 MS/s...): rates below 2 MS/s use the RSP's hardware decimation, and
+  the analog filter follows the rate. See [docs/USAGE.md](docs/USAGE.md#sample-rate-and-bandwidth).
+- **Automatic discovery.** The server is advertised on the local network
+  (mDNS, `_rtl_tcp._tcp`), so clients that browse for rtl_tcp servers, such as
+  NyxScope, list it without typing an address.
 - **Per-band gain control.** A gain step is translated into the RSP's two gain
   controls (*LNA state* and *IF gain reduction*) using a table **for the current
   band**; it is re-applied automatically when the frequency crosses a band
@@ -120,6 +126,8 @@ sdr-universal --version
 |---|---|---|---|
 | `--port N` | | `1234` | rtl_tcp port. The control port is `N + 1`. |
 | `--bind ADDR` | `SDR_BIND` | `0.0.0.0` | Listen address for both ports. Use `127.0.0.1` to accept only connections from this machine. |
+| `--name NAME` | `SDR_NAME` | `SDR Universal on <host>` | Name shown to clients that discover the server. |
+| `--no-mdns` | `SDR_MDNS=0` | advertised | Do not advertise the server on the local network. |
 | `--verbose`, `-v` | `SDR_VERBOSE=1` | off | Detailed traces (API events, IQ statistics, raw commands). |
 | `--mock` | `SDR_MOCK=1` | off | Simulated RSP1B, no hardware. |
 | `--mock-level DBM` | `SDR_MOCK_LEVEL_DBM` | `-75` | Simulated antenna level, in dBm (mock only). |
@@ -148,9 +156,8 @@ sdr-universal --version
 - **No authentication.** By default both ports listen on all network interfaces, so
   anyone who can reach them can retune the receiver. Use `--bind 127.0.0.1` when the
   client runs on the same machine, and a firewall or a trusted network otherwise.
-- **Sample rate.** The RSP runs at the rate the client asks for when the API accepts
-  it (for example 2.048 MS/s for DAB). Rates below 2 MS/s are produced by a simple
-  linear resampler without an anti-aliasing filter; treat them as best-effort.
+- **Sample rates from 62.5 kHz to 10 MS/s.** Anything outside that range is refused
+  (with a warning) and the stream keeps its current rate.
 - **Absolute RF level needs a one-time calibration** (see [docs/GAIN.md](docs/GAIN.md)).
 
 ## License

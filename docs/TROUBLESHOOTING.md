@@ -68,6 +68,27 @@ The RSP1B has an FM notch filter, implemented in the backend but not reachable f
 rtl_tcp clients yet. Do **not** enable the DAB notch when receiving DAB: it attenuates
 band III.
 
+**A client asks for a rate and gets something else.**
+Only 62.5 kHz to 10 MS/s are supported. A request outside that range is refused
+(`Core command failed: Sample rate … outside the supported range`) and the stream keeps its
+current rate, which the client does not know about. Choose a supported rate in the client.
+
+**The spectrum looks narrower than the sample rate.**
+The analog filter follows the sample rate (see [USAGE.md](USAGE.md#sample-rate-and-bandwidth)):
+for example 600 kHz at 1.024 MS/s. If the client can send a bandwidth (command `0x40`) it
+may widen the filter up to the widest width that fits the rate, no more.
+
+## Discovery
+
+**A client that browses for rtl_tcp servers (NyxScope...) does not list the gateway.**
+- Look for `mDNS: advertising '…'` in the log. `mDNS advertisement unavailable` means the
+  gateway could not use multicast on this machine; `mDNS advertisement skipped` means it
+  listens on the loopback interface only; `disabled` means `--no-mdns` or `SDR_MDNS=0`.
+- Allow UDP multicast on port 5353 (mDNS) in the firewall of the gateway machine and make
+  sure the two machines are on the same network segment. Many Wi-Fi guest networks and
+  VLANs block multicast.
+- Enter the address and port by hand: discovery is only a convenience.
+
 ## Log too long
 
 Filter it: see [USAGE.md](USAGE.md#reading-the-log). `--verbose` is off by default, and

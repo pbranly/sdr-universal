@@ -26,10 +26,9 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::backend::bandwidth;
 use crate::backend::gain::{self, Band};
 use crate::backend::Backend;
-use crate::core::{telemetry, Event, GainMode, IqBlock, IqSample};
+use crate::core::{rates, telemetry, Event, GainMode, IqBlock, IqSample};
 
 /// Total gain for LNAstate 0 and gRdB 0 (observed: 85.58 dB at gRdB 20).
 const GAIN_BASE_DB: f64 = 105.6;
@@ -46,11 +45,6 @@ const GR_MAX: i32 = 59;
 
 /// Per-component (I or Q) level above which an overload is reported.
 const OVERLOAD_RMS: f64 = 0.30;
-
-/// Filter widths accepted by the SDRplay API (Hz).
-const SUPPORTED_BANDWIDTHS_HZ: [u32; 8] = [
-    200_000, 300_000, 600_000, 1_536_000, 5_000_000, 6_000_000, 7_000_000, 8_000_000,
-];
 
 const BLOCK_SAMPLES: usize = 4096;
 const NOISE_LEN: usize = 1 << 16;
@@ -368,7 +362,7 @@ impl Backend for MockBackend {
             }
 
             Event::BandwidthChanged(hz) => {
-                if !SUPPORTED_BANDWIDTHS_HZ.contains(hz) {
+                if !rates::SUPPORTED_BANDWIDTHS_HZ.contains(hz) {
                     return Err(anyhow::anyhow!("Unsupported bandwidth: {} Hz", hz));
                 }
 
@@ -377,8 +371,16 @@ impl Backend for MockBackend {
             }
 
             Event::SampleRateChanged(hz) => {
-                self.shared.lock().unwrap().sample_rate = *hz;
-                log::info!("RSP1B sample rate set to {} Hz", hz);
+                let plan = rates::plan(*hz)
+                    .ok_or_else(|| anyhow::anyhow!("Unsupported sample rate: {} Hz", hz))?;
+
+                self.shared.lock().unwrap().sample_rate = plan.output_hz;
+                log::info!(
+                    "RSP1B sample rate set to {} Hz (ADC {} Hz, decimation {})",
+                    plan.output_hz,
+                    plan.adc_hz,
+                    plan.decimation
+                );
             }
 
             Event::BiasTeeChanged(enabled) => {
@@ -470,11 +472,6 @@ impl Drop for MockBackend {
     }
 }
 
-#[allow(dead_code)]
-fn _uses(_: u32) -> u32 {
-    bandwidth::DEFAULT_HZ
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -524,7 +521,7 @@ mod tests {
         let level = dbfs(level_dbm, total_gain_db(lna, gr));
         assert!(
             (level - AGC_TARGET_DBFS).abs() <= 1.0,
-            "niveau final {}",
+            "final level {}",
             level
         );
         assert!((GR_MIN..=GR_MAX).contains(&gr));

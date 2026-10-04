@@ -3,6 +3,7 @@ pub mod command;
 pub mod event;
 pub mod iq;
 pub mod processor;
+pub mod rates;
 pub mod receiver;
 pub mod state;
 pub mod telemetry;

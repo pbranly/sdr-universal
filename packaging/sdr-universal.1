@@ -25,6 +25,15 @@ rtl_tcp port (default 1234). The control port is N+1.
 Listen address for both ports (default 0.0.0.0, all interfaces; same as SDR_BIND).
 Use 127.0.0.1 to accept only connections from the local machine.
 .TP
+.B \-\-no\-mdns
+Do not advertise the server on the local network (same as SDR_MDNS=0). By default
+the rtl_tcp server is advertised as a _rtl_tcp._tcp service (mDNS), unless it listens
+on the loopback interface only.
+.TP
+.BI \-\-name " NAME"
+Name shown to clients that discover the server (same as SDR_NAME). Default:
+"SDR Universal on <host>".
+.TP
 .BR \-v ", " \-\-verbose
 Detailed traces (same as SDR_VERBOSE=1).
 .TP

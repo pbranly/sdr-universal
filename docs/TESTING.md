@@ -52,12 +52,29 @@ like AbracaDABra would:
 | `bind_option_limits_the_listening_address` | `--bind 127.0.0.1`: address in the log, both ports reachable, no all-interfaces warning |
 | `default_bind_warns_about_all_interfaces` | Default start-up warns that all interfaces are exposed |
 | `invalid_option_values_are_rejected_at_start_up` | Bad `--bind`, `--port` (not a number, out of range, 65535) and `--mock-level` stop at once with a message naming the option |
+| `rates_below_2_msps_use_decimation_and_a_matching_bandwidth` | 1.024 MS/s, 250 kHz and 2.4 MS/s: ADC rate and decimation in the log, matching analog filter, data rate close to the requested rate |
+| `unsupported_sample_rates_are_refused_and_the_stream_keeps_its_rate` | 12 MS/s and 10 kHz are refused with a warning; the stream stays at 2.048 MS/s |
+| `bandwidth_requests_are_capped_by_the_sample_rate` | A 1.536 MHz request at 1.024 MS/s is capped to 600 kHz, and honoured at 2.048 MS/s |
+| `mdns_can_be_disabled_and_is_skipped_on_loopback` | `--no-mdns` and `--bind 127.0.0.1` do not advertise |
+| `mdns_failure_is_never_fatal` | The gateway advertises, or only warns, and keeps serving clients |
+| `empty_service_name_is_rejected` | `--name` with an empty value stops at start-up |
 | `version_flag_reports_the_package_version` | `--version` / `-V` print one line with the package version and target |
 | `help_lists_the_options` | `--help` / `-h` list the options |
 | `missing_sdrplay_api_fails_cleanly` | Without the SDRplay API: non-zero exit, readable message, no panic (never touches a real RSP) |
 
 The tests catch real regressions: reintroducing an old bug (wrong RF-level scaling, or
 the old tuner header) makes the corresponding tests fail.
+
+One more test needs a network interface with multicast, which CI runners and containers do
+not always have, so it is ignored by default:
+
+```bash
+cargo test --test mock_e2e -- --ignored mdns
+```
+
+`mdns_advertisement_is_discoverable` browses for `_rtl_tcp._tcp` like a client would and
+checks the port and properties of the advertisement, and that it is withdrawn when the
+gateway stops.
 
 **Not covered:** the SDRplay backend itself is not executed by these tests. Hardware
 tests are still needed.
@@ -71,6 +88,9 @@ Run with a real RSP1B:
 - [ ] Channel changes inside band III: no `ERROR` or `WARN` lines.
 - [ ] Crossing bands (FM ↔ DAB ↔ UHF ↔ L-band): `Band change` logged and gain re-applied.
 - [ ] Client disconnect and reconnect without restarting the gateway.
+- [ ] Sample rates 1.024, 1.4 and 2.4 MS/s with a real client: spectrum shows no aliasing and the log reports the expected decimation.
+- [ ] Rate change while streaming: the stream resumes at the new rate (no stall; no `sample rate change not confirmed` warning).
+- [ ] NyxScope (or another mDNS-aware client) lists the gateway without typing an address.
 - [ ] Ctrl+C, then an immediate restart: the RSP is released and found again.
 - [ ] Unplug and replug the RSP; restart the SDRplay API service.
 - [ ] Endurance: one hour on a stable channel (CPU use, no dropped audio).

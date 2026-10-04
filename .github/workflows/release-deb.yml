@@ -150,7 +150,7 @@ jobs:
           sdr-universal --version
 
           # Simulated receiver: no hardware and no SDRplay API needed.
-          sdr-universal --mock --port 26000 > mock.log 2>&1 &
+          sdr-universal --mock --port 26000 --no-mdns > mock.log 2>&1 &
           sleep 5
           grep -q "MOCK MODE" mock.log
           pkill -INT -x sdr-universal

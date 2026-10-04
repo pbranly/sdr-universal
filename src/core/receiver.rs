@@ -1,10 +1,12 @@
 use anyhow::{anyhow, Result};
 
-use super::{Capabilities, Command, Event, ReceiverState};
+use super::{rates, Capabilities, Command, Event, ReceiverState};
 
 #[derive(Debug)]
 pub enum CommandResult {
     Event(Event),
+    /// Several events, to be applied in order.
+    Events(Vec<Event>),
     State(ReceiverState),
     Capabilities(Capabilities),
 }
@@ -98,21 +100,27 @@ impl Receiver {
             }
 
             Command::SetSampleRate(sample_rate) => {
-                const MIN_SAMPLE_RATE: u32 = 2_000_000; // RSP1B ADC floor without decimation
-                const MAX_SAMPLE_RATE: u32 = 10_000_000;
-
-                if sample_rate < MIN_SAMPLE_RATE || sample_rate > MAX_SAMPLE_RATE {
+                if rates::plan(sample_rate).is_none() {
                     return Err(anyhow!(
                         "Sample rate {} Hz outside the supported range ({}–{} Hz)",
                         sample_rate,
-                        MIN_SAMPLE_RATE,
-                        MAX_SAMPLE_RATE
+                        self.capabilities.sample_rate_min_hz,
+                        self.capabilities.sample_rate_max_hz
                     ));
                 }
 
                 self.state.sample_rate = sample_rate;
 
-                Ok(CommandResult::Event(Event::SampleRateChanged(sample_rate)))
+                // The analog filter follows the rate (widest width that fits),
+                // like SDRplay's rsp_tcp. A client that wants another width
+                // sends it afterwards (rtl_tcp command 0x40).
+                let bandwidth_hz = rates::default_bandwidth_hz(sample_rate);
+                self.state.bandwidth_hz = bandwidth_hz;
+
+                Ok(CommandResult::Events(vec![
+                    Event::SampleRateChanged(sample_rate),
+                    Event::BandwidthChanged(bandwidth_hz),
+                ]))
             }
 
             Command::SetGain(gain) => {

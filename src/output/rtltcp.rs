@@ -42,7 +42,9 @@ impl RtltcpCommand {
         }
     }
 
-    pub fn to_core_command(self) -> Option<Command> {
+    /// Converts to a core command. `sample_rate_hz` is the receiver's current
+    /// output rate: it limits the analog bandwidth that can be requested.
+    pub fn to_core_command(self, sample_rate_hz: u32) -> Option<Command> {
         match self {
             Self::SetFrequency(value) => Some(Command::SetFrequency(value as u64)),
 
@@ -70,10 +72,11 @@ impl RtltcpCommand {
 
             Self::SetBandwidth(value) => {
                 // The RSP only has a few filter widths: take the nearest one
-                // above the request (AbracaDABra's 1.53 MHz -> 1.536 MHz).
-                Some(Command::SetBandwidth(crate::backend::bandwidth::snap_hz(
-                    value,
-                )))
+                // above the request (AbracaDABra's 1.53 MHz -> 1.536 MHz), never
+                // wider than the current rate allows.
+                Some(Command::SetBandwidth(
+                    crate::core::rates::snap_bandwidth_hz(value, sample_rate_hz),
+                ))
             }
 
             Self::Unknown(_, _) => None,

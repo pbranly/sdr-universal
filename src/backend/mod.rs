@@ -13,7 +13,6 @@ pub trait Backend {
     fn service(&mut self) {}
 }
 
-pub mod bandwidth;
 pub mod gain;
 pub mod mock;
 
