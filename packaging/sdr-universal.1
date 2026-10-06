@@ -25,6 +25,15 @@ rtl_tcp port (default 1234). The control port is N+1.
 Listen address for both ports (default 0.0.0.0, all interfaces; same as SDR_BIND).
 Use 127.0.0.1 to accept only connections from the local machine.
 .TP
+.BI \-\-rsp\-port " N"
+Also serve SDRplay's rsp_tcp extended protocol on port N (same as SDR_RSP_PORT): signed
+16-bit samples and the RSP's own controls (LNA state, IF gain reduction, AGC set-point,
+notch filters), for clients such as SDroxide. Only one client at a time is served,
+across both servers.
+.TP
+.BI \-\-rsp\-bits " B"
+Sample size of the rsp_tcp server: 16 (default) or 8 (same as SDR_RSP_BITS).
+.TP
 .B \-\-no\-mdns
 Do not advertise the server on the local network (same as SDR_MDNS=0). By default
 the rtl_tcp server is advertised as a _rtl_tcp._tcp service (mDNS), unless it listens

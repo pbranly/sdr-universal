@@ -1,13 +1,11 @@
+use super::rsp_tcp::{self, RspCommand};
+use super::server::{Demand, IqFrame};
 use crate::core::iq::IqSink;
 use crate::core::{Command, GainMode, IqBlock};
 
-use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::Sender;
 use std::sync::Arc;
-use std::thread;
-use std::time::Duration;
 
 #[derive(Debug, Clone, Copy)]
 pub enum RtltcpCommand {
@@ -23,11 +21,23 @@ pub enum RtltcpCommand {
     SetBiasTee(bool),
     /// 0x40: bandwidth in Hz (extension used by AbracaDABra).
     SetBandwidth(u32),
+    /// An rsp_tcp extended command (opcodes 0x1F-0x26), only decoded on the
+    /// rsp_tcp server.
+    Rsp(RspCommand),
     Unknown(u8, u32),
 }
 
 impl RtltcpCommand {
-    pub fn parse(command: u8, value: u32) -> Self {
+    /// Decodes a command. The rsp_tcp extended opcodes are only recognised when
+    /// `rsp_extended` is set (the rsp_tcp server): on plain rtl_tcp they are
+    /// unknown commands, as in the original servers.
+    pub fn parse(command: u8, value: u32, rsp_extended: bool) -> Self {
+        if rsp_extended {
+            if let Some(rsp) = RspCommand::parse(command, value) {
+                return Self::Rsp(rsp);
+            }
+        }
+
         match command {
             0x01 => Self::SetFrequency(value),
             0x02 => Self::SetSampleRate(value),
@@ -42,13 +52,14 @@ impl RtltcpCommand {
         }
     }
 
-    /// Converts to a core command. `sample_rate_hz` is the receiver's current
-    /// output rate: it limits the analog bandwidth that can be requested.
-    pub fn to_core_command(self, sample_rate_hz: u32) -> Option<Command> {
+    /// Converts to core commands (usually one; some rsp_tcp commands give two
+    /// or none). `sample_rate_hz` is the receiver's current output rate: it
+    /// limits the analog bandwidth that can be requested.
+    pub fn to_core_commands(self, sample_rate_hz: u32) -> Vec<Command> {
         match self {
-            Self::SetFrequency(value) => Some(Command::SetFrequency(value as u64)),
+            Self::SetFrequency(value) => vec![Command::SetFrequency(value as u64)],
 
-            Self::SetSampleRate(value) => Some(Command::SetSampleRate(value)),
+            Self::SetSampleRate(value) => vec![Command::SetSampleRate(value)],
 
             Self::SetGainMode(value) => {
                 let mode = if value == 0 {
@@ -57,27 +68,27 @@ impl RtltcpCommand {
                     GainMode::Manual
                 };
 
-                Some(Command::SetGainMode(mode))
+                vec![Command::SetGainMode(mode)]
             }
 
-            Self::SetGain(value) => Some(Command::SetGain(value as f32 / 10.0)),
+            Self::SetGain(value) => vec![Command::SetGain(value as f32 / 10.0)],
 
-            Self::SetGainIndex(value) => Some(Command::SetGainIndex(value as usize)),
+            Self::SetGainIndex(value) => vec![Command::SetGainIndex(value as usize)],
 
-            Self::SetAgc(value) => Some(Command::SetAgc(value)),
+            Self::SetAgc(value) => vec![Command::SetAgc(value)],
 
-            Self::SetPpm(value) => Some(Command::SetPpm(value as f32)),
+            Self::SetPpm(value) => vec![Command::SetPpm(value as f32)],
 
-            Self::SetBiasTee(value) => Some(Command::SetBiasTee(value)),
+            Self::SetBiasTee(value) => vec![Command::SetBiasTee(value)],
 
-            Self::SetBandwidth(value) => {
-                // The RSP only has a few filter widths: take the nearest one
-                // above the request (AbracaDABra's 1.53 MHz -> 1.536 MHz), never
-                // wider than the current rate allows.
-                Some(Command::SetBandwidth(
-                    crate::core::rates::snap_bandwidth_hz(value, sample_rate_hz),
-                ))
-            }
+            // The RSP only has a few filter widths: take the nearest one above
+            // the request (AbracaDABra's 1.53 MHz -> 1.536 MHz), never wider
+            // than the current rate allows.
+            Self::SetBandwidth(value) => vec![Command::SetBandwidth(
+                crate::core::rates::snap_bandwidth_hz(value, sample_rate_hz),
+            )],
+
+            Self::Rsp(command) => command.to_core_commands(),
 
             Self::Unknown(opcode, value) => {
                 log::debug!(
@@ -85,7 +96,7 @@ impl RtltcpCommand {
                     opcode,
                     value
                 );
-                None
+                Vec::new()
             }
         }
     }
@@ -94,7 +105,8 @@ impl RtltcpCommand {
 pub struct RtltcpSink {
     samples_processed: u64,
     blocks_processed: u64,
-    iq_tx: Sender<Vec<u8>>,
+    iq_tx: Sender<IqFrame>,
+    demand: Arc<Demand>,
     requested_sample_rate: Arc<AtomicU32>,
 
     // State kept between two IQ blocks to keep the resampling
@@ -104,11 +116,16 @@ pub struct RtltcpSink {
 }
 
 impl RtltcpSink {
-    pub fn new(iq_tx: Sender<Vec<u8>>, requested_sample_rate: Arc<AtomicU32>) -> Self {
+    pub fn new(
+        iq_tx: Sender<IqFrame>,
+        demand: Arc<Demand>,
+        requested_sample_rate: Arc<AtomicU32>,
+    ) -> Self {
         Self {
             samples_processed: 0,
             blocks_processed: 0,
             iq_tx,
+            demand,
             requested_sample_rate,
             resample_buffer: Vec::new(),
             resample_position: 0.0,
@@ -204,315 +221,6 @@ impl RtltcpSink {
 
         output
     }
-
-    pub fn start_server(addr: &str) -> (Sender<Vec<u8>>, Receiver<RtltcpCommand>) {
-        let (iq_tx, iq_rx) = mpsc::channel::<Vec<u8>>();
-        let (command_tx, command_rx) = mpsc::channel::<RtltcpCommand>();
-
-        let addr = addr.to_string();
-
-        /*
-         * List of the RTL-TCP clients currently connected.
-         *
-         * The IQ core keeps a single permanent Sender to the server. The
-         * server then distributes each IQ block to the clients.
-         */
-        let clients: Arc<std::sync::Mutex<Vec<Sender<Vec<u8>>>>> =
-            Arc::new(std::sync::Mutex::new(Vec::new()));
-
-        /*
-         * IQ DISTRIBUTOR THREAD
-         *
-         * The IQ Receiver belongs to the server for good: it is never handed
-         * over to a client.
-         */
-        let clients_iq = Arc::clone(&clients);
-
-        thread::spawn(move || {
-            while let Ok(data) = iq_rx.recv() {
-                let mut clients = match clients_iq.lock() {
-                    Ok(clients) => clients,
-                    Err(_) => {
-                        log::error!("RTL-TCP: client list lock poisoned");
-                        break;
-                    }
-                };
-
-                clients.retain(|client_tx| client_tx.send(data.clone()).is_ok());
-            }
-
-            log::debug!("RTL-TCP IQ distributor stopped");
-        });
-
-        thread::spawn(move || {
-            let listener = match TcpListener::bind(&addr) {
-                Ok(listener) => {
-                    log::info!("RTL-TCP server listening on {}", addr);
-                    listener
-                }
-
-                Err(err) => {
-                    log::error!("RTL-TCP bind {} failed: {}", addr, err);
-                    return;
-                }
-            };
-
-            for stream in listener.incoming() {
-                match stream {
-                    Ok(stream) => {
-                        log::info!("RTL-TCP client connected");
-
-                        /*
-                         * Each client now has its own IQ channel. The main
-                         * Receiver stays in the distributor thread.
-                         */
-                        let (client_iq_tx, client_iq_rx) = mpsc::channel::<Vec<u8>>();
-
-                        if let Ok(mut clients) = clients.lock() {
-                            clients.push(client_iq_tx);
-                        } else {
-                            log::error!("RTL-TCP: cannot register the client");
-                            continue;
-                        }
-
-                        let command_tx = command_tx.clone();
-
-                        Self::handle_client(stream, client_iq_rx, command_tx);
-
-                        log::info!("RTL-TCP client disconnected");
-                    }
-
-                    Err(err) => {
-                        log::warn!("RTL-TCP connection failed: {}", err);
-                    }
-                }
-            }
-        });
-
-        (iq_tx, command_rx)
-    }
-
-    fn handle_client(
-        mut stream: TcpStream,
-        iq_rx: Receiver<Vec<u8>>,
-        command_tx: Sender<RtltcpCommand>,
-    ) {
-        if let Err(err) = Self::send_header(&mut stream) {
-            log::warn!("RTL-TCP header failed: {}", err);
-            return;
-        }
-
-        /*
-         * Two independent sockets:
-         *
-         * - command_stream: receives the commands
-         * - iq_stream:      sends the IQ data
-         *
-         * TCP allows this with a clone of the socket.
-         */
-        let command_stream = match stream.try_clone() {
-            Ok(stream) => stream,
-
-            Err(err) => {
-                log::error!("RTL-TCP socket clone failed: {}", err);
-                return;
-            }
-        };
-
-        let iq_stream = match stream.try_clone() {
-            Ok(stream) => stream,
-
-            Err(err) => {
-                log::error!("RTL-TCP IQ socket clone failed: {}", err);
-                return;
-            }
-        };
-
-        let connected = Arc::new(AtomicBool::new(true));
-
-        /*
-         * ------------------------------------------------------------
-         * COMMAND THREAD
-         * ------------------------------------------------------------
-         */
-        let connected_commands = Arc::clone(&connected);
-
-        let command_thread = thread::spawn(move || {
-            Self::handle_commands(command_stream, command_tx, connected_commands);
-        });
-
-        /*
-         * ------------------------------------------------------------
-         * IQ THREAD
-         * ------------------------------------------------------------
-         */
-        let connected_iq = Arc::clone(&connected);
-
-        let iq_thread = thread::spawn(move || {
-            Self::handle_iq(iq_stream, iq_rx, connected_iq);
-        });
-
-        /*
-         * The client's main thread waits for both threads.
-         */
-        let _ = command_thread.join();
-
-        connected.store(false, Ordering::SeqCst);
-
-        let _ = iq_thread.join();
-
-        /*
-         * `stream` is kept up to here so that the main socket stays alive
-         * for the duration of both threads.
-         */
-        let _ = stream.shutdown(std::net::Shutdown::Both);
-    }
-
-    fn handle_commands(
-        mut stream: TcpStream,
-        command_tx: Sender<RtltcpCommand>,
-        connected: Arc<AtomicBool>,
-    ) {
-        /*
-         * An RTL-TCP command is exactly 5 bytes:
-         *
-         * byte 0     : command
-         * bytes 1-4  : big-endian u32 value
-         *
-         * TCP may however deliver these bytes over several reads.
-         */
-        let mut command_buffer = [0u8; 5];
-        let mut command_len = 0usize;
-        log::debug!("RTL-TCP command thread started");
-        while connected.load(Ordering::SeqCst) {
-            match stream.read(&mut command_buffer[command_len..]) {
-                Ok(0) => {
-                    break;
-                }
-
-                Ok(n) => {
-                    command_len += n;
-
-                    if command_len == 5 {
-                        let command = RtltcpCommand::parse(
-                            command_buffer[0],
-                            u32::from_be_bytes([
-                                command_buffer[1],
-                                command_buffer[2],
-                                command_buffer[3],
-                                command_buffer[4],
-                            ]),
-                        );
-
-                        log::debug!("RTL-TCP command: {:?}", command);
-
-                        if command_tx.send(command).is_err() {
-                            break;
-                        }
-
-                        command_len = 0;
-                    }
-                }
-
-                Err(err) => {
-                    log::warn!("RTL-TCP command read failed: {}", err);
-                    break;
-                }
-            }
-        }
-
-        connected.store(false, Ordering::SeqCst);
-    }
-
-    fn handle_iq(mut stream: TcpStream, iq_rx: Receiver<Vec<u8>>, connected: Arc<AtomicBool>) {
-        /*
-         * The IQ socket stays BLOCKING.
-         *
-         * This is deliberate: we do not want to throw away pieces of IQ
-         * blocks just because the network is momentarily full.
-         */
-        while connected.load(Ordering::SeqCst) {
-            match iq_rx.recv_timeout(Duration::from_millis(5000)) {
-                Ok(data) => {
-                    static RECV_DEBUG_COUNT: std::sync::atomic::AtomicUsize =
-                        std::sync::atomic::AtomicUsize::new(0);
-
-                    let recv_count =
-                        RECV_DEBUG_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-                    if recv_count % 100 == 0 {
-                        log::trace!(
-                            "RTL-TCP RECV #{}: len={} first={:02x} {:02x} {:02x} {:02x} | non7f={}",
-                            recv_count,
-                            data.len(),
-                            data.first().copied().unwrap_or(0),
-                            data.get(1).copied().unwrap_or(0),
-                            data.get(2).copied().unwrap_or(0),
-                            data.get(3).copied().unwrap_or(0),
-                            data.iter().filter(|&&v| v != 0x7f).count(),
-                        );
-                    }
-                    if let Err(err) = stream.write_all(&data) {
-                        // A client closing its connection is normal, not a problem.
-                        if matches!(
-                            err.kind(),
-                            std::io::ErrorKind::ConnectionReset
-                                | std::io::ErrorKind::BrokenPipe
-                                | std::io::ErrorKind::ConnectionAborted
-                        ) {
-                            log::debug!("RTL-TCP client closed the connection: {}", err);
-                        } else {
-                            log::warn!("RTL-TCP IQ write failed: {}", err);
-                        }
-
-                        connected.store(false, Ordering::SeqCst);
-                        break;
-                    }
-                }
-
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    /*
-                     * Lets us check regularly whether the command thread
-                     * has detected a disconnection.
-                     */
-                }
-
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    connected.store(false, Ordering::SeqCst);
-                    break;
-                }
-            }
-        }
-    }
-
-    fn send_header(stream: &mut TcpStream) -> std::io::Result<()> {
-        let mut header = Vec::with_capacity(12);
-
-        /*
-         * RTL-TCP header:
-         *
-         * 4 bytes: "RTL0"
-         * 4 bytes: tuner type
-         * 4 bytes: number of gain steps
-         */
-        header.extend_from_slice(b"RTL0");
-        // Tuner type 5 = R820T: clients (AbracaDABra, SDR#...) derive a list
-        // of 29 gains from it. With "1" (E4000) and a gain count of 0 the list
-        // was empty and AbracaDABra never sent any gain command.
-        header.extend_from_slice(&5u32.to_be_bytes());
-        header.extend_from_slice(&(crate::backend::gain::GAIN_STEPS as u32).to_be_bytes());
-
-        stream.write_all(&header)
-    }
-}
-
-impl Default for RtltcpSink {
-    fn default() -> Self {
-        let (iq_tx, _iq_rx) = mpsc::channel();
-        let requested_sample_rate = Arc::new(AtomicU32::new(2_000_000));
-
-        Self::new(iq_tx, requested_sample_rate)
-    }
 }
 
 impl IqSink for RtltcpSink {
@@ -527,7 +235,20 @@ impl IqSink for RtltcpSink {
             samples: resampled_samples,
         };
 
-        let rtl_iq = self.convert_block(&resampled_block);
+        let debug_due = self.blocks_processed % 100 == 99 && log::log_enabled!(log::Level::Debug);
+
+        // Convert only the formats that have clients (plus the 8-bit view when
+        // the periodic debug statistics are due).
+        let u8_data = (self.demand.u8.load(Ordering::Relaxed) || debug_due)
+            .then(|| self.convert_block(&resampled_block));
+
+        let i16_data = self
+            .demand
+            .i16
+            .load(Ordering::Relaxed)
+            .then(|| rsp_tcp::samples_to_i16_le(&resampled_block.samples));
+
+        let rtl_iq: &[u8] = u8_data.as_deref().unwrap_or(&[]);
 
         self.blocks_processed += 1;
         self.samples_processed += resampled_block.samples.len() as u64;
@@ -539,7 +260,7 @@ impl IqSink for RtltcpSink {
                 block.samples.len()
             );
         }
-        if self.blocks_processed % 100 == 0 {
+        if self.blocks_processed % 100 == 0 && log::log_enabled!(log::Level::Debug) {
             let mut i_min = f32::INFINITY;
             let mut i_max = f32::NEG_INFINITY;
             let mut q_min = f32::INFINITY;
@@ -647,7 +368,17 @@ impl IqSink for RtltcpSink {
             );
         }
 
-        if self.iq_tx.send(rtl_iq).is_err() {
+        let frame = IqFrame {
+            // Only keep the 8-bit data if a client wants it.
+            u8_data: if self.demand.u8.load(Ordering::Relaxed) {
+                u8_data.map(Arc::new)
+            } else {
+                None
+            },
+            i16_data: i16_data.map(Arc::new),
+        };
+
+        if self.iq_tx.send(frame).is_err() {
             // Warn once: the same failure would otherwise repeat for every block.
             static WARNED: AtomicBool = AtomicBool::new(false);
 

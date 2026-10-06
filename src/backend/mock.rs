@@ -28,6 +28,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::backend::gain::{self, Band};
 use crate::backend::Backend;
+use crate::core::capabilities::{DEFAULT_AGC_SETPOINT_DBFS, IF_GAIN_REDUCTION_RANGE_DB};
 use crate::core::{rates, telemetry, Event, GainMode, IqBlock, IqSample};
 
 /// Total gain for LNAstate 0 and gRdB 0 (observed: 85.58 dB at gRdB 20).
@@ -36,12 +37,9 @@ const GAIN_BASE_DB: f64 = 105.6;
 /// LNA attenuation per state (approximation, 60-420 MHz table).
 const LNA_GR_DB: [f64; 10] = [0.0, 6.0, 12.0, 18.0, 20.0, 26.0, 32.0, 38.0, 57.0, 62.0];
 
-/// AGC set-point in dBFS (like rsp_tcp).
-const AGC_TARGET_DBFS: f64 = -30.0;
-
 /// gRdB limits of the RSP1B.
-const GR_MIN: i32 = 20;
-const GR_MAX: i32 = 59;
+const GR_MIN: i32 = IF_GAIN_REDUCTION_RANGE_DB.0;
+const GR_MAX: i32 = IF_GAIN_REDUCTION_RANGE_DB.1;
 
 /// Per-component (I or Q) level above which an overload is reported.
 const OVERLOAD_RMS: f64 = 0.30;
@@ -61,10 +59,10 @@ pub fn dbfs(level_dbm: f64, total_gain_db: f64) -> f64 {
 }
 
 /// One AGC step: ±1 dB of gRdB to bring the level closer to the set-point.
-pub fn agc_step(gr_db: i32, level_dbfs: f64) -> i32 {
-    if level_dbfs > AGC_TARGET_DBFS + 1.0 {
+pub fn agc_step(gr_db: i32, level_dbfs: f64, target_dbfs: f64) -> i32 {
+    if level_dbfs > target_dbfs + 1.0 {
         (gr_db + 1).min(GR_MAX)
-    } else if level_dbfs < AGC_TARGET_DBFS - 1.0 {
+    } else if level_dbfs < target_dbfs - 1.0 {
         (gr_db - 1).max(GR_MIN)
     } else {
         gr_db
@@ -80,6 +78,8 @@ struct Shared {
     gr_db: i32,
     gain_index: usize,
     agc_on: bool,
+    /// Hardware AGC set-point, in dBFS.
+    agc_setpoint_dbfs: i32,
     level_dbm: f64,
     overload: bool,
     overload_events: u64,
@@ -115,6 +115,7 @@ impl MockBackend {
                 gr_db,
                 gain_index: gain::DEFAULT_GAIN_INDEX,
                 agc_on: false,
+                agc_setpoint_dbfs: DEFAULT_AGC_SETPOINT_DBFS,
                 level_dbm,
                 overload: false,
                 overload_events: 0,
@@ -158,6 +159,22 @@ impl MockBackend {
         );
 
         Ok(())
+    }
+
+    /// Logs a direct LNA / IF gain change (rsp_tcp extended commands) and
+    /// publishes the resulting total gain.
+    fn log_direct_gain(&self, band: Band, lna_state: u8, gr_db: i32, agc_on: bool) {
+        let total = total_gain_db(lna_state, gr_db);
+        telemetry::set_total_gain_db(total);
+
+        log::info!(
+            "GAIN: band={:?} direct LNA={} gRdB={} curr={:.2} dB (AGC={})",
+            band,
+            lna_state,
+            gr_db,
+            total,
+            agc_on
+        );
     }
 
     fn start_worker(&mut self) {
@@ -219,7 +236,7 @@ fn generate(shared: Arc<Mutex<Shared>>, tx: SyncSender<IqBlock>, stop: Arc<Atomi
             let mut level = dbfs(s.level_dbm, total);
 
             if s.agc_on {
-                let new_gr = agc_step(s.gr_db, level);
+                let new_gr = agc_step(s.gr_db, level, s.agc_setpoint_dbfs as f64);
 
                 if new_gr != s.gr_db {
                     s.gr_db = new_gr;
@@ -357,6 +374,41 @@ impl Backend for MockBackend {
                 }
             },
 
+            Event::LnaStateChanged(lna_state) => {
+                let (band, gr_db, agc_on) = {
+                    let mut s = self.shared.lock().unwrap();
+
+                    if *lna_state > s.band.max_lna_state() {
+                        return Err(anyhow::anyhow!(
+                            "LNA state {} does not exist in band {:?} (highest: {})",
+                            lna_state,
+                            s.band,
+                            s.band.max_lna_state()
+                        ));
+                    }
+
+                    s.lna_state = *lna_state;
+                    (s.band, s.gr_db, s.agc_on)
+                };
+
+                self.log_direct_gain(band, *lna_state, gr_db, agc_on);
+            }
+
+            Event::IfGainReductionChanged(gr_db) => {
+                let (band, lna_state, agc_on) = {
+                    let mut s = self.shared.lock().unwrap();
+                    s.gr_db = *gr_db;
+                    (s.band, s.lna_state, s.agc_on)
+                };
+
+                self.log_direct_gain(band, lna_state, *gr_db, agc_on);
+            }
+
+            Event::AgcSetpointChanged(setpoint_dbfs) => {
+                self.shared.lock().unwrap().agc_setpoint_dbfs = *setpoint_dbfs;
+                log::info!("RSP1B AGC set-point: {} dBFS", setpoint_dbfs);
+            }
+
             Event::AgcChanged(enabled) => {
                 log::debug!("RTL digital AGC (0x08) ignored: enabled={}", enabled);
             }
@@ -476,6 +528,9 @@ impl Drop for MockBackend {
 mod tests {
     use super::*;
 
+    /// The default AGC set-point, as a float.
+    const AGC_TARGET_DBFS: f64 = DEFAULT_AGC_SETPOINT_DBFS as f64;
+
     #[test]
     fn total_gain_matches_observed_rsp1b_values() {
         // Observed: LNA 0 / gRdB 20 -> 85.58 dB; LNA 0 / gRdB 38 -> 67.58 dB.
@@ -515,7 +570,7 @@ mod tests {
 
         for _ in 0..100 {
             let level = dbfs(level_dbm, total_gain_db(lna, gr));
-            gr = agc_step(gr, level);
+            gr = agc_step(gr, level, AGC_TARGET_DBFS);
         }
 
         let level = dbfs(level_dbm, total_gain_db(lna, gr));
@@ -529,8 +584,8 @@ mod tests {
 
     #[test]
     fn agc_respects_limits() {
-        assert_eq!(agc_step(GR_MAX, 10.0), GR_MAX);
-        assert_eq!(agc_step(GR_MIN, -90.0), GR_MIN);
+        assert_eq!(agc_step(GR_MAX, 10.0, AGC_TARGET_DBFS), GR_MAX);
+        assert_eq!(agc_step(GR_MIN, -90.0, AGC_TARGET_DBFS), GR_MIN);
     }
 
     #[test]

@@ -18,6 +18,9 @@ pub enum Event {
     GainIndexChanged(usize),
     GainModeChanged(GainMode),
     AgcChanged(bool),
+    LnaStateChanged(u8),
+    IfGainReductionChanged(i32),
+    AgcSetpointChanged(i32),
 
     AntennaChanged(String),
     PpmChanged(f32),

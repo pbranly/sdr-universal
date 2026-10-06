@@ -58,6 +58,15 @@ like AbracaDABra would:
 | `mdns_can_be_disabled_and_is_skipped_on_loopback` | `--no-mdns` and `--bind 127.0.0.1` do not advertise |
 | `mdns_failure_is_never_fatal` | The gateway advertises, or only warns, and keeps serving clients |
 | `empty_service_name_is_rejected` | `--name` with an empty value stops at start-up |
+| `rsp_tcp_server_sends_the_capability_block_and_16_bit_samples` | `RSP0` block fields, 16-bit data rate (8 MB/s at 2 MS/s), AGC level in the 16-bit data |
+| `rsp_tcp_server_can_send_8_bit_samples` | `--rsp-bits 8` announces format 1 and halves the data rate |
+| `rsp_tcp_direct_gain_controls_drive_the_receiver` | LNA state and IF gain reduction: log, measured level (35.6 dB gain gives -39.4 dBFS, 14 dB more gives a factor of 5) and control-port gain |
+| `rsp_tcp_agc_set_point_is_honoured` | Signed set-point (-40 then -25 dBFS) drives the AGC level |
+| `rsp_tcp_notch_bias_t_and_missing_controls` | Notch mask, bias-T; second antenna, reference output, AM/RF notch ignored without error |
+| `rsp_tcp_invalid_values_are_refused_and_the_stream_goes_on` | Out-of-range LNA, gRdB, set-point and an LNA state that does not exist in the band (L-band) |
+| `extended_commands_are_unknown_on_the_plain_rtl_tcp_port` | `0x20`-`0x26` do nothing on the rtl_tcp port |
+| `one_client_at_a_time_across_both_servers` | A second client waits without a greeting, then is served when the first leaves |
+| `a_stalled_client_cannot_exhaust_the_gateway_memory` | A client that never reads makes the gateway drop blocks (and log it) instead of growing |
 | `version_flag_reports_the_package_version` | `--version` / `-V` print one line with the package version and target |
 | `help_lists_the_options` | `--help` / `-h` list the options |
 | `missing_sdrplay_api_fails_cleanly` | Without the SDRplay API: non-zero exit, readable message, no panic (never touches a real RSP) |
@@ -91,6 +100,9 @@ Run with a real RSP1B:
 - [ ] Sample rates 1.024, 1.4 and 2.4 MS/s with a real client: spectrum shows no aliasing and the log reports the expected decimation.
 - [ ] Rate change while streaming: the stream resumes at the new rate (no stall; no `sample rate change not confirmed` warning).
 - [ ] NyxScope (or another mDNS-aware client) lists the gateway without typing an address.
+- [ ] SDroxide connected to the rsp_tcp port (`--rsp-port`): 16-bit samples, LNA state and IF gain reduction sliders move the gain, AGC set-point works, FM notch visibly attenuates the broadcast band.
+- [ ] 16-bit stream at 2.048 MS/s and at 6–10 MS/s over your network: no `client too slow` warnings.
+- [ ] Switching between an rtl_tcp client (AbracaDABra) and an rsp_tcp client (SDroxide) on the two ports: each is served once the other has left.
 - [ ] Ctrl+C, then an immediate restart: the RSP is released and found again.
 - [ ] Unplug and replug the RSP; restart the SDRplay API service.
 - [ ] Endurance: one hour on a stable channel (CPU use, no dropped audio).

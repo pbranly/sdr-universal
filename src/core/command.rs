@@ -20,6 +20,12 @@ pub enum Command {
     SetGainIndex(usize),
     SetGainMode(super::GainMode),
     SetAgc(bool),
+    /// Direct LNA state (rsp_tcp extended command 0x20).
+    SetLnaState(u8),
+    /// Direct IF gain reduction in dB (rsp_tcp extended command 0x21).
+    SetIfGainReduction(i32),
+    /// Hardware AGC set-point in dBFS (rsp_tcp extended command 0x23).
+    SetAgcSetpoint(i32),
 
     SetAntenna(String),
     SetPpm(f32),

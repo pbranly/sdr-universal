@@ -1,5 +1,17 @@
 use super::{rates, ReceiverMode};
 
+/// Range of the IF gain reduction (gRdB), in dB: higher means less gain.
+pub const IF_GAIN_REDUCTION_RANGE_DB: (i32, i32) = (20, 59);
+
+/// Highest LNA state of any band (the backend also checks the band's own limit).
+pub const MAX_LNA_STATE: u8 = 9;
+
+/// Range of the hardware AGC set-point, in dBFS.
+pub const AGC_SETPOINT_RANGE_DBFS: (i32, i32) = (-72, -20);
+
+/// AGC set-point used until a client chooses another (same as SDRplay's rsp_tcp).
+pub const DEFAULT_AGC_SETPOINT_DBFS: i32 = -30;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IfType {
     Zero,

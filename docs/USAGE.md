@@ -25,6 +25,7 @@ after a short pause (about two seconds) that lets the USB device be released.
 |---|---|
 | `1234` (`--port N`) | rtl_tcp server: header, IQ stream, commands |
 | `1235` (`N + 1`) | Control port: real gain and overload state, used for the RF level |
+| `--rsp-port N` | Optional rsp_tcp extended server (16-bit samples, RSP controls), see below |
 | UDP `5353` (multicast) | mDNS advertisement, see below |
 
 By default both listen on `0.0.0.0` (all interfaces) and have **no authentication**:
@@ -74,6 +75,57 @@ commands.
 `1234`, and enable the control-port option so that it can show the RF level. In
 its hardware-AGC mode AbracaDABra does not display an RF level; use its software AGC
 or manual gain.
+
+## rsp_tcp extended server (16-bit samples and native controls)
+
+rtl_tcp was designed for RTL-SDR dongles: 8-bit samples and a gain list. An RSP samples at
+12 to 14 bits and has its own controls, so SDRplay's `rsp_tcp` server adds an **extended
+mode** to rtl_tcp, which clients such as **SDroxide** understand. Start the gateway with
+a second port to offer it:
+
+```bash
+sdr-universal --rsp-port 1236          # 16-bit samples (default)
+sdr-universal --rsp-port 1236 --rsp-bits 8
+```
+
+Then connect the client to the gateway's address and port `1236`. SDroxide uses the same
+network source as for rtl_tcp servers: it recognises the extended block the server sends
+and switches to the RSP's own controls and 16-bit samples. (Without the extended block, a
+client has no way to know the samples are 16-bit and reads them as noise: that is why this
+is a separate port.) Clients that only speak plain rtl_tcp keep using port `1234`; both
+servers can run at the same time.
+
+What the extended server adds:
+
+| | rtl_tcp port (`1234`) | rsp_tcp extended port (`--rsp-port`) |
+|---|---|---|
+| Greeting | `RTL0` header | `RTL0` header, then a 45-byte `RSP0` capability block |
+| Samples | unsigned 8-bit | signed 16-bit (default) or 8-bit |
+| Gain | 29 steps (R820T emulation) | the same, **and** LNA state and IF gain reduction set directly |
+| AGC | on / off | on / off, **and** its set-point (-72 to -20 dBFS) |
+| Filters | none | FM broadcast notch and DAB notch |
+| Other | bias-T, bandwidth | bias-T, bandwidth |
+
+Things to know:
+
+- **Data rate.** 16-bit samples are 4 bytes per complex sample: **8 MB/s at 2 MS/s**
+  (64 Mbit/s), twice the 8-bit rate. Prefer a wired network for the highest rates.
+- **One client at a time, across both servers.** The receiver has one frequency, gain and
+  sample rate. If a client connects to one server while another is active on the other, it
+  waits (connected, without a greeting) and is served when the active one leaves. The log
+  shows `waiting for the active session to end`.
+- **Slow clients.** Each client has a bounded queue. A client that stops reading loses IQ
+  blocks (`client too slow: dropping IQ blocks`) instead of making the gateway use more
+  and more memory.
+- **Direct gain controls** are checked against the **current band**: an LNA state that
+  does not exist there (for instance 9 in the L-band, whose highest is 8) is refused with
+  a warning. See [GAIN.md](GAIN.md#direct-gain-controls-rsp_tcp-extended).
+- An **RSP1B** has one antenna input, no reference-clock output and no AM or RF notch:
+  the matching commands are accepted and ignored.
+- The extended server is **not** advertised by mDNS (there is no standard service type for
+  it): enter its address and port by hand.
+- The extended opcodes are only decoded on this port; on the plain rtl_tcp port they are
+  unknown commands and are ignored, as in the original servers.
 
 ## Sample rate and bandwidth
 
@@ -150,7 +202,12 @@ The messages to look for:
 | `DAB notch enabled in band III …` | WARN | The DAB notch degrades DAB reception. |
 | `control port (RF level) listening on …` / `control client connected` | INFO | Control port state. |
 | `mDNS: advertising '…'` / `mDNS advertisement unavailable: …` | INFO / WARN | Discovery state. |
-| `RTL-TCP client connected` / `RTL-TCP client disconnected` | INFO | rtl_tcp client state. |
+| `RTL-TCP client connected` / `disconnected`, `RSP-TCP client connected` / `disconnected` | INFO | Client state, per server. |
+| `RSP-TCP extended server listening on … (16-bit samples)` | INFO | The rsp_tcp server started. |
+| `… client connected: waiting for the active session to end` | INFO | Another client is active: this one waits. |
+| `client too slow: dropping IQ blocks (n so far)` | WARN | A client does not read fast enough; its oldest blocks are dropped. |
+| `GAIN: band=… direct LNA=… gRdB=…` | INFO | LNA state or IF gain reduction set directly (rsp_tcp extended). |
+| `RSP1B AGC set-point: … dBFS` | INFO | AGC set-point changed (rsp_tcp extended). |
 | `Core command failed: …` | WARN | A command from a client was refused (for example a value out of range). |
 
 Handy filters:
@@ -170,7 +227,7 @@ connection cause no traffic to the receiver:
 
 - **Bias-T** (rtl_tcp `0x0E`) powers the antenna. Enable it only with an antenna that
   accepts DC on the coax.
-- **RF notch (FM)** and **DAB notch** exist in the core and backend, but rtl_tcp
-  has no standard command for them, so they are not reachable from an RTL client
-  yet.
+- **RF notch (FM)** and **DAB notch**: rtl_tcp has no command for them, but the
+  [rsp_tcp extended server](#rsp_tcp-extended-server-16-bit-samples-and-native-controls)
+  does (`0x24`). Do **not** enable the DAB notch when receiving DAB: it attenuates band III.
 - **Frequency correction** (`0x05`, ppm).

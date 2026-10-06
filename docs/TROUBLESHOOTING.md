@@ -78,6 +78,28 @@ The analog filter follows the sample rate (see [USAGE.md](USAGE.md#sample-rate-a
 for example 600 kHz at 1.024 MS/s. If the client can send a bandwidth (command `0x40`) it
 may widen the filter up to the widest width that fits the rate, no more.
 
+## rsp_tcp extended server
+
+**SDroxide (or another rsp_tcp client) shows no RSP controls, or noise.**
+Connect it to the **rsp_tcp port** (`--rsp-port`), not to the plain rtl_tcp port: only the
+extended server sends the capability block that tells the client it is talking to an RSP.
+Start the gateway with `--rsp-port 1236` and check for
+`RSP-TCP extended server listening on …` in the log.
+
+**A second client does not get any data.**
+Only one client is served at a time, across both servers. Look for
+`waiting for the active session to end`: the second client is served as soon as the first
+one disconnects.
+
+**`client too slow: dropping IQ blocks`.**
+The client (or the network) does not keep up. 16-bit samples need twice the bandwidth of
+8-bit ones (8 MB/s at 2 MS/s): lower the sample rate, use a wired network, or start the
+server with `--rsp-bits 8`.
+
+**An LNA state is refused (`does not exist in band …`).**
+The highest LNA state depends on the band (6 below 60 MHz, 9 for 60–1000 MHz, 8 above).
+Change the frequency first, or use a lower state.
+
 ## Discovery
 
 **A client that browses for rtl_tcp servers (NyxScope...) does not list the gateway.**

@@ -28,6 +28,10 @@ It is written in Rust and talks to the receiver through the official SDRplay API
 - **Any sample rate from 62.5 kHz to 10 MS/s**, as RTL-SDR clients expect (1.024,
   1.4, 2.4, 3.2 MS/s...): rates below 2 MS/s use the RSP's hardware decimation, and
   the analog filter follows the rate. See [docs/USAGE.md](docs/USAGE.md#sample-rate-and-bandwidth).
+- **SDRplay `rsp_tcp` extended protocol** (optional second server, `--rsp-port`): the
+  RSP's native **16-bit samples** and its own controls (LNA state, IF gain reduction,
+  hardware AGC and its set-point, notch filters, bias-T), for clients such as SDroxide.
+  See [docs/USAGE.md](docs/USAGE.md#rsp_tcp-extended-server-16-bit-samples-and-native-controls).
 - **Automatic discovery.** The server is advertised on the local network
   (mDNS, `_rtl_tcp._tcp`), so clients that browse for rtl_tcp servers, such as
   NyxScope, list it without typing an address.
@@ -129,6 +133,8 @@ sdr-universal --version
 | `--bind ADDR` | `SDR_BIND` | `0.0.0.0` | Listen address for both ports. Use `127.0.0.1` to accept only connections from this machine. |
 | `--name NAME` | `SDR_NAME` | `SDR Universal on <host>` | Name shown to clients that discover the server. |
 | `--no-mdns` | `SDR_MDNS=0` | advertised | Do not advertise the server on the local network. |
+| `--rsp-port N` | `SDR_RSP_PORT` | off | Also serve SDRplay's rsp_tcp extended protocol on port `N`. |
+| `--rsp-bits B` | `SDR_RSP_BITS` | `16` | Sample size of the rsp_tcp server: `16` or `8`. |
 | `--verbose`, `-v` | `SDR_VERBOSE=1` | off | Detailed traces (API events, IQ statistics, raw commands). |
 | `--mock` | `SDR_MOCK=1` | off | Simulated RSP1B, no hardware. |
 | `--mock-level DBM` | `SDR_MOCK_LEVEL_DBM` | `-75` | Simulated antenna level, in dBm (mock only). |
@@ -152,8 +158,9 @@ sdr-universal --version
 
 - **RSP1B only.** The first SDRplay device found is used and its model is not
   checked; the gain tables are the RSP1B's. Other models need their own tables.
-- **One client at a time.** Extra connections wait until the current client
-  disconnects.
+- **One client at a time**, across all servers: the receiver has a single frequency,
+  gain and sample rate. Another client waits, connected but without a greeting, until
+  the active one disconnects.
 - **No authentication.** By default both ports listen on all network interfaces, so
   anyone who can reach them can retune the receiver. Use `--bind 127.0.0.1` when the
   client runs on the same machine, and a firewall or a trusted network otherwise.
@@ -177,5 +184,6 @@ is therefore distributed under a compatible license.
 - SDRplay `rsp_tcp` — gain tables and AGC settings.
 - [AbracaDABra](https://github.com/KejPi/AbracaDABra) and old-dab's rtl_tcp server
   — the bandwidth command and the control-port protocol.
-- [SDroxide](https://github.com/dividebysandwich/sdroxide) — used as a reference for
+- [SDroxide](https://github.com/dividebysandwich/sdroxide) — its rsp_tcp client was used to
+  cross-check the extended protocol, and as a reference for
   how a native client drives an RSP through the SDRplay API.

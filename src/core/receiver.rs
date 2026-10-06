@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 
+use super::capabilities::{AGC_SETPOINT_RANGE_DBFS, IF_GAIN_REDUCTION_RANGE_DB, MAX_LNA_STATE};
 use super::{rates, Capabilities, Command, Event, ReceiverState};
 
 #[derive(Debug)]
@@ -150,6 +151,50 @@ impl Receiver {
                 self.state.gain_index = index;
 
                 Ok(CommandResult::Event(Event::GainIndexChanged(index)))
+            }
+
+            Command::SetLnaState(lna_state) => {
+                if lna_state > MAX_LNA_STATE {
+                    return Err(anyhow!(
+                        "LNA state out of range: {} (0 - {})",
+                        lna_state,
+                        MAX_LNA_STATE
+                    ));
+                }
+
+                Ok(CommandResult::Event(Event::LnaStateChanged(lna_state)))
+            }
+
+            Command::SetIfGainReduction(gr_db) => {
+                let (min, max) = IF_GAIN_REDUCTION_RANGE_DB;
+
+                if !(min..=max).contains(&gr_db) {
+                    return Err(anyhow!(
+                        "IF gain reduction out of range: {} dB ({} - {} dB)",
+                        gr_db,
+                        min,
+                        max
+                    ));
+                }
+
+                Ok(CommandResult::Event(Event::IfGainReductionChanged(gr_db)))
+            }
+
+            Command::SetAgcSetpoint(setpoint_dbfs) => {
+                let (min, max) = AGC_SETPOINT_RANGE_DBFS;
+
+                if !(min..=max).contains(&setpoint_dbfs) {
+                    return Err(anyhow!(
+                        "AGC set-point out of range: {} dBFS ({} - {} dBFS)",
+                        setpoint_dbfs,
+                        min,
+                        max
+                    ));
+                }
+
+                Ok(CommandResult::Event(Event::AgcSetpointChanged(
+                    setpoint_dbfs,
+                )))
             }
 
             Command::SetGainMode(gain_mode) => {

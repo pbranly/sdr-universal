@@ -21,6 +21,8 @@ const LEVEL_DBM: f64 = -75.0;
 struct Gateway {
     child: Child,
     port: u16,
+    /// Port of the optional rsp_tcp server (`--rsp-port {rsp}`).
+    rsp_port: u16,
     logs: Arc<Mutex<Vec<String>>>,
 }
 
@@ -32,7 +34,7 @@ impl Gateway {
     fn start_with(extra_args: &[&str]) -> Gateway {
         let port = 21000
             + (std::process::id() % 1000) as u16 * 20
-            + NEXT_PORT.fetch_add(2, Ordering::SeqCst);
+            + NEXT_PORT.fetch_add(4, Ordering::SeqCst);
 
         let mut child = Command::new(env!("CARGO_BIN_EXE_sdr-universal"))
             .args([
@@ -42,7 +44,13 @@ impl Gateway {
                 "--mock-level",
                 &LEVEL_DBM.to_string(),
             ])
-            .args(extra_args)
+            .args(extra_args.iter().map(|arg| {
+                if *arg == "{rsp}" {
+                    (port + 2).to_string()
+                } else {
+                    arg.to_string()
+                }
+            }))
             // Tests must not advertise services on the real network: only the
             // ones that pass `--name` exercise the mDNS advertisement.
             .args(if extra_args.contains(&"--name") {
@@ -69,7 +77,12 @@ impl Gateway {
         collect(child.stdout.take().unwrap(), Arc::clone(&logs));
         collect(child.stderr.take().unwrap(), Arc::clone(&logs));
 
-        let gw = Gateway { child, port, logs };
+        let gw = Gateway {
+            child,
+            port,
+            rsp_port: port + 2,
+            logs,
+        };
         assert!(
             gw.wait_log("waiting for RTL-TCP commands", Duration::from_secs(20)),
             "the gateway did not start:\n{}",
@@ -155,6 +168,16 @@ struct Client {
 
 impl Client {
     fn connect(port: u16) -> Client {
+        Client::connect_with_greeting(port, 0).0
+    }
+
+    /// Connects to the rsp_tcp server: also returns the 45-byte `RSP0` block.
+    fn connect_rsp(port: u16) -> (Client, [u8; 45]) {
+        let (client, extra) = Client::connect_with_greeting(port, 45);
+        (client, extra.try_into().expect("45 bytes"))
+    }
+
+    fn connect_with_greeting(port: u16, extra_len: usize) -> (Client, Vec<u8>) {
         let mut stream = connect_retry(port);
         stream
             .set_read_timeout(Some(Duration::from_secs(10)))
@@ -162,6 +185,9 @@ impl Client {
 
         let mut header = [0u8; 12];
         stream.read_exact(&mut header).expect("RTL0 header");
+
+        let mut extra = vec![0u8; extra_len];
+        stream.read_exact(&mut extra).expect("RSP0 block");
 
         let window = Arc::new(Mutex::new(Vec::new()));
         let total = Arc::new(AtomicU64::new(0));
@@ -180,17 +206,22 @@ impl Client {
                 win.extend_from_slice(&buf[..n]);
                 let len = win.len();
                 if len > 65536 {
-                    win.drain(..len - 65536);
+                    // Keep whole samples (up to 4 bytes) at the start of the window.
+                    let excess = len - 65536;
+                    win.drain(..excess - excess % 4);
                 }
             }
         });
 
-        Client {
-            stream,
-            header,
-            window,
-            total,
-        }
+        (
+            Client {
+                stream,
+                header,
+                window,
+                total,
+            },
+            extra,
+        )
     }
 
     fn cmd(&mut self, op: u8, value: u32) {
@@ -214,6 +245,17 @@ impl Client {
             .sum::<f64>()
             / tail.len() as f64;
         power.sqrt()
+    }
+
+    /// RMS of one component for signed 16-bit little-endian samples.
+    fn rms_i16(&self) -> f64 {
+        let win = self.window.lock().unwrap();
+        let tail = &win[win.len().saturating_sub(32768)..];
+        let values: Vec<f64> = tail
+            .chunks_exact(2)
+            .map(|c| i16::from_le_bytes([c[0], c[1]]) as f64)
+            .collect();
+        (values.iter().map(|v| v * v).sum::<f64>() / values.len() as f64).sqrt()
     }
 
     fn min_max(&self) -> (u8, u8) {
@@ -634,12 +676,22 @@ fn default_bind_warns_about_all_interfaces() {
 
 #[test]
 fn invalid_option_values_are_rejected_at_start_up() {
-    let cases: [(&[&str], &str); 5] = [
+    let cases: [(&[&str], &str); 9] = [
         (&["--mock", "--bind", "not-an-ip"], "--bind"),
         (&["--mock", "--port", "abc"], "--port"),
         (&["--mock", "--port", "70000"], "--port"),
         (&["--mock", "--port", "65535"], "65535"),
         (&["--mock", "--mock-level", "abc"], "--mock-level"),
+        (&["--mock", "--rsp-port", "abc"], "--rsp-port"),
+        (&["--mock", "--rsp-bits", "12"], "--rsp-bits"),
+        (
+            &["--mock", "--port", "23456", "--rsp-port", "23456"],
+            "--rsp-port",
+        ),
+        (
+            &["--mock", "--port", "23456", "--rsp-port", "23457"],
+            "--rsp-port",
+        ),
     ];
 
     for (args, expected) in cases {
@@ -891,4 +943,354 @@ fn mdns_advertisement_is_discoverable() {
         removed,
         "the service was not withdrawn when the gateway stopped"
     );
+}
+
+/// Decoded `RSP0` capability block.
+struct RspBlock {
+    version: u32,
+    capabilities: u32,
+    hardware_version: u32,
+    sample_format: u32,
+    antennas: u8,
+    tuners: u8,
+    ifgr_min: u8,
+    ifgr_max: u8,
+}
+
+fn parse_rsp_block(block: &[u8; 45]) -> RspBlock {
+    assert_eq!(&block[..4], b"RSP0", "magic of the capability block");
+    let be = |i: usize| u32::from_be_bytes([block[i], block[i + 1], block[i + 2], block[i + 3]]);
+
+    RspBlock {
+        version: be(4),
+        capabilities: be(8),
+        hardware_version: be(16),
+        sample_format: be(20),
+        antennas: block[24],
+        tuners: block[42],
+        ifgr_min: block[43],
+        ifgr_max: block[44],
+    }
+}
+
+/// Component RMS expected for a digital level, in dBFS, on the API's ±32768 scale.
+fn rms_for_dbfs(dbfs: f64) -> f64 {
+    10f64.powf(dbfs / 20.0) * 32768.0
+}
+
+fn assert_close(measured: f64, expected: f64, tolerance: f64, what: &str) {
+    assert!(
+        (measured - expected).abs() <= expected * tolerance,
+        "{}: measured {:.0}, expected {:.0} (±{:.0}%)",
+        what,
+        measured,
+        expected,
+        tolerance * 100.0
+    );
+}
+
+#[test]
+fn rsp_tcp_server_sends_the_capability_block_and_16_bit_samples() {
+    let gw = Gateway::start_with(&["--rsp-port", "{rsp}"]);
+    assert!(
+        gw.log_contains("RSP-TCP extended server listening on"),
+        "{}",
+        gw.dump()
+    );
+
+    let (client, block) = Client::connect_rsp(gw.rsp_port);
+
+    // The 12-byte RTL0 greeting is unchanged.
+    assert_eq!(&client.header[0..4], b"RTL0");
+    assert_eq!(
+        u32::from_be_bytes(client.header[4..8].try_into().unwrap()),
+        5
+    );
+    assert_eq!(
+        u32::from_be_bytes(client.header[8..12].try_into().unwrap()),
+        29
+    );
+
+    let rsp = parse_rsp_block(&block);
+    assert_eq!(rsp.version, 1);
+    assert_eq!(rsp.hardware_version, 6, "RSP1B");
+    assert_eq!(rsp.sample_format, 2, "signed 16-bit");
+    // AGC | bias-T | DAB notch | broadcast notch.
+    assert_eq!(rsp.capabilities, (1 << 7) | (1 << 0) | (1 << 4) | (1 << 3));
+    assert_eq!((rsp.antennas, rsp.tuners), (1, 1));
+    assert_eq!((rsp.ifgr_min, rsp.ifgr_max), (20, 59));
+
+    // 4 bytes per complex sample at 2 MS/s.
+    let measured = throughput(&client, Duration::from_millis(1500));
+    assert!(
+        measured > 8_000_000.0 * 0.7 && measured < 8_000_000.0 * 1.3,
+        "{:.0} bytes/s instead of about 8 MB/s",
+        measured
+    );
+
+    // The hardware AGC drives the level to its -30 dBFS set-point.
+    thread::sleep(Duration::from_millis(1500));
+    assert_close(client.rms_i16(), rms_for_dbfs(-30.0), 0.4, "AGC level");
+}
+
+#[test]
+fn rsp_tcp_server_can_send_8_bit_samples() {
+    let gw = Gateway::start_with(&["--rsp-port", "{rsp}", "--rsp-bits", "8"]);
+
+    let (client, block) = Client::connect_rsp(gw.rsp_port);
+    assert_eq!(parse_rsp_block(&block).sample_format, 1, "unsigned 8-bit");
+
+    let measured = throughput(&client, Duration::from_millis(1500));
+    assert!(
+        measured > 4_000_000.0 * 0.7 && measured < 4_000_000.0 * 1.3,
+        "{:.0} bytes/s instead of about 4 MB/s",
+        measured
+    );
+}
+
+#[test]
+fn rsp_tcp_direct_gain_controls_drive_the_receiver() {
+    let gw = Gateway::start_with(&["--rsp-port", "{rsp}"]);
+    let (mut client, _) = Client::connect_rsp(gw.rsp_port);
+
+    client.cmd(0x01, 195_936_000); // band III
+    client.cmd(0x22, 0); // hardware AGC off
+    client.cmd(0x20, 5); // LNA state
+    client.cmd(0x21, 44); // IF gain reduction
+
+    assert!(
+        gw.wait_log("direct LNA=5 gRdB=44", Duration::from_secs(5)),
+        "{}",
+        gw.dump()
+    );
+    thread::sleep(Duration::from_millis(1000));
+
+    // Total gain 105.6 - 26 - 44 = 35.6 dB, antenna at -75 dBm: -39.4 dBFS.
+    let before = client.rms_i16();
+    assert_close(before, rms_for_dbfs(-39.4), 0.2, "level at LNA 5 / gRdB 44");
+
+    // 14 dB less IF gain reduction = 14 dB more signal, a factor of 5.
+    client.cmd(0x21, 30);
+    assert!(
+        gw.wait_log("direct LNA=5 gRdB=30", Duration::from_secs(5)),
+        "{}",
+        gw.dump()
+    );
+    thread::sleep(Duration::from_millis(1000));
+
+    let after = client.rms_i16();
+    assert_close(after / before, 10f64.powf(14.0 / 20.0), 0.2, "gain ratio");
+
+    // The control port announces the new total gain (35.6 + 14 = 49.6 dB).
+    let (announced, _) = gw.control();
+    assert!(announced > 49.6, "announced gain {}", announced);
+
+    assert!(!gw.log_contains("Core command failed"), "{}", gw.dump());
+}
+
+#[test]
+fn rsp_tcp_agc_set_point_is_honoured() {
+    let gw = Gateway::start_with(&["--rsp-port", "{rsp}"]);
+    let (mut client, _) = Client::connect_rsp(gw.rsp_port);
+
+    client.cmd(0x22, 1); // hardware AGC on
+    client.cmd(0x23, (-40i32) as u32); // set-point, signed
+    assert!(
+        gw.wait_log("RSP1B AGC set-point: -40 dBFS", Duration::from_secs(5)),
+        "{}",
+        gw.dump()
+    );
+    thread::sleep(Duration::from_millis(2500));
+    assert_close(
+        client.rms_i16(),
+        rms_for_dbfs(-40.0),
+        0.4,
+        "level at -40 dBFS",
+    );
+
+    client.cmd(0x23, (-25i32) as u32);
+    thread::sleep(Duration::from_millis(2500));
+    assert_close(
+        client.rms_i16(),
+        rms_for_dbfs(-25.0),
+        0.4,
+        "level at -25 dBFS",
+    );
+}
+
+#[test]
+fn rsp_tcp_notch_bias_t_and_missing_controls() {
+    let gw = Gateway::start_with(&["--rsp-port", "{rsp}"]);
+    let (mut client, _) = Client::connect_rsp(gw.rsp_port);
+
+    client.cmd(0x24, 2 | 4); // broadcast (FM) and DAB notch
+    assert!(
+        gw.wait_log("RF notch (FM): enabled", Duration::from_secs(5)),
+        "{}",
+        gw.dump()
+    );
+    assert!(
+        gw.wait_log("DAB notch: enabled", Duration::from_secs(5)),
+        "{}",
+        gw.dump()
+    );
+
+    client.cmd(0x24, 0);
+    assert!(
+        gw.wait_log("RF notch (FM): disabled", Duration::from_secs(5)),
+        "{}",
+        gw.dump()
+    );
+    assert!(
+        gw.wait_log("DAB notch: disabled", Duration::from_secs(5)),
+        "{}",
+        gw.dump()
+    );
+
+    client.cmd(0x25, 1);
+    assert!(
+        gw.wait_log("Bias-T: enabled", Duration::from_secs(5)),
+        "{}",
+        gw.dump()
+    );
+
+    // An RSP1B has one antenna and no reference output: ignored, not an error.
+    client.cmd(0x1F, 1);
+    client.cmd(0x26, 1);
+    client.cmd(0x24, 1 | 8); // AM and RF notches do not exist either
+    thread::sleep(Duration::from_millis(500));
+
+    assert!(!gw.log_contains("Core command failed"), "{}", gw.dump());
+}
+
+#[test]
+fn rsp_tcp_invalid_values_are_refused_and_the_stream_goes_on() {
+    let gw = Gateway::start_with(&["--rsp-port", "{rsp}"]);
+    let (mut client, _) = Client::connect_rsp(gw.rsp_port);
+
+    client.cmd(0x20, 50); // no such LNA state anywhere
+    client.cmd(0x21, 10); // below the 20 dB minimum
+    client.cmd(0x23, 0); // set-point above -20 dBFS
+    client.cmd(0x23, (-100i32) as u32); // below -72 dBFS
+
+    // LNA state 9 exists in band III but not in L-band (highest: 8).
+    client.cmd(0x01, 1_090_000_000);
+    assert!(
+        gw.wait_log("Band change", Duration::from_secs(5)),
+        "{}",
+        gw.dump()
+    );
+    client.cmd(0x20, 9);
+
+    thread::sleep(Duration::from_millis(1000));
+
+    let failures = gw
+        .logs
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|line| line.contains("Core command failed"))
+        .count();
+    assert_eq!(failures, 5, "{}", gw.dump());
+    assert!(
+        gw.log_contains("does not exist in band LBand"),
+        "{}",
+        gw.dump()
+    );
+
+    let measured = throughput(&client, Duration::from_millis(1000));
+    assert!(
+        measured > 4_000_000.0,
+        "the stream must keep going: {:.0}",
+        measured
+    );
+}
+
+#[test]
+fn extended_commands_are_unknown_on_the_plain_rtl_tcp_port() {
+    let gw = Gateway::start_with(&["--rsp-port", "{rsp}"]);
+    let mut client = gw.client();
+
+    client.cmd(0x20, 5);
+    client.cmd(0x21, 44);
+    client.cmd(0x24, 6);
+    thread::sleep(Duration::from_millis(1000));
+
+    assert!(!gw.log_contains("direct LNA"), "{}", gw.dump());
+    assert!(!gw.log_contains("RF notch"), "{}", gw.dump());
+    assert!(!gw.log_contains("Core command failed"), "{}", gw.dump());
+}
+
+#[test]
+fn one_client_at_a_time_across_both_servers() {
+    let gw = Gateway::start_with(&["--rsp-port", "{rsp}"]);
+
+    let first = gw.client();
+    assert_eq!(&first.header[0..4], b"RTL0");
+
+    // A second client, on the other server, connects but gets nothing yet.
+    let mut second = connect_retry(gw.rsp_port);
+    second
+        .set_read_timeout(Some(Duration::from_millis(1500)))
+        .unwrap();
+
+    let mut greeting = [0u8; 12];
+    assert!(
+        second.read_exact(&mut greeting).is_err(),
+        "the second client must wait for the active session"
+    );
+    assert!(
+        gw.log_contains("waiting for the active session to end"),
+        "{}",
+        gw.dump()
+    );
+
+    // As soon as the first client leaves, the second one is served.
+    drop(first);
+    second
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    second
+        .read_exact(&mut greeting)
+        .expect("greeting after the first client left");
+    assert_eq!(&greeting[0..4], b"RTL0");
+
+    let mut block = [0u8; 45];
+    second.read_exact(&mut block).expect("capability block");
+    assert_eq!(&block[0..4], b"RSP0");
+}
+
+/// A client that stops reading must not make the gateway's memory grow without
+/// limit: its queue is bounded and the oldest data is dropped.
+#[test]
+fn a_stalled_client_cannot_exhaust_the_gateway_memory() {
+    let gw = Gateway::start();
+
+    // A raw connection that reads the greeting and then never reads again: the
+    // socket buffers fill up, then the gateway's per-client queue.
+    let mut raw = connect_retry(gw.port);
+    raw.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    let mut header = [0u8; 12];
+    raw.read_exact(&mut header).unwrap();
+
+    assert!(
+        gw.wait_log(
+            "client too slow: dropping IQ blocks",
+            Duration::from_secs(25)
+        ),
+        "{}",
+        gw.dump()
+    );
+
+    // Resident memory of the gateway stays small.
+    let status = std::fs::read_to_string(format!("/proc/{}/status", gw.child.id())).unwrap();
+    let rss_kb: u64 = status
+        .lines()
+        .find(|l| l.starts_with("VmRSS:"))
+        .and_then(|l| l.split_whitespace().nth(1))
+        .and_then(|v| v.parse().ok())
+        .expect("VmRSS");
+    assert!(rss_kb < 200_000, "gateway memory: {} kB", rss_kb);
+
+    drop(raw);
 }

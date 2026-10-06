@@ -8,6 +8,7 @@ use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::core::capabilities::DEFAULT_AGC_SETPOINT_DBFS;
 use crate::core::{rates, Event, IfType, IqBlock, IqReblocker, IqSample, LoMode};
 
 use crate::backend::gain;
@@ -885,6 +886,8 @@ pub struct SdrplayBackend {
     gain_index: usize,
     /// SDRplay hardware AGC enabled.
     agc_on: bool,
+    /// Hardware AGC set-point, in dBFS (changed by rsp_tcp command 0x23).
+    agc_setpoint_dbfs: i32,
     last_overload_log: Instant,
 }
 
@@ -924,6 +927,7 @@ impl SdrplayBackend {
             band: Band::from_hz(200_000_000),
             gain_index: gain::DEFAULT_GAIN_INDEX,
             agc_on: false,
+            agc_setpoint_dbfs: DEFAULT_AGC_SETPOINT_DBFS,
             last_overload_log: Instant::now(),
         }
     }
@@ -1022,6 +1026,24 @@ impl SdrplayBackend {
                             self.set_gain_index(self.gain_index)?;
                         }
                     }
+                }
+            }
+
+            Event::LnaStateChanged(lna_state) => {
+                self.set_direct_gain(Some(*lna_state), None)?;
+            }
+
+            Event::IfGainReductionChanged(gr_db) => {
+                self.set_direct_gain(None, Some(*gr_db))?;
+            }
+
+            Event::AgcSetpointChanged(setpoint_dbfs) => {
+                self.agc_setpoint_dbfs = *setpoint_dbfs;
+                log::info!("RSP1B AGC set-point: {} dBFS", setpoint_dbfs);
+
+                // The new set-point only takes effect when the AGC is configured.
+                if self.agc_on {
+                    self.set_agc(true)?;
                 }
             }
 
@@ -1997,6 +2019,63 @@ impl SdrplayBackend {
         Ok(())
     }
 
+    /// Sets the LNA state and/or the IF gain reduction directly (rsp_tcp
+    /// extended commands 0x20 and 0x21), bypassing the 29-step scale. The other
+    /// value keeps what the receiver currently has.
+    pub fn set_direct_gain(&mut self, lna_state: Option<u8>, gr_db: Option<i32>) -> Result<()> {
+        let band = self.band;
+
+        // The core only knows the highest state of any band: check this band's.
+        if let Some(lna_state) = lna_state {
+            if lna_state > band.max_lna_state() {
+                return Err(anyhow!(
+                    "LNA state {} does not exist in band {:?} (highest: {})",
+                    lna_state,
+                    band,
+                    band.max_lna_state()
+                ));
+            }
+        }
+
+        let mut applied = (0u8, 0i32);
+
+        // sdrplay_api_Update_Tuner_Gr
+        let changed =
+            self.update_rsp1_setting("LNA state / IF gain reduction", 0x0000_8000, |_, rx| {
+                let gain = &mut rx.tuner_params.gain;
+                let before = (gain.lna_state, gain.gr_db);
+
+                if let Some(lna_state) = lna_state {
+                    gain.lna_state = lna_state;
+                }
+
+                if let Some(gr_db) = gr_db {
+                    gain.gr_db = gr_db;
+                }
+
+                applied = (gain.lna_state, gain.gr_db);
+                before != applied
+            })?;
+
+        if changed {
+            log::info!(
+                "GAIN: band={:?} direct LNA={} gRdB={} (AGC={})",
+                band,
+                applied.0,
+                applied.1,
+                self.agc_on
+            );
+
+            // Like rsp_tcp: after an LNA state change the AGC configuration is
+            // applied again (the AGC takes control of gRdB again).
+            if self.agc_on && lna_state.is_some() {
+                self.set_agc(true)?;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Sets a setting specific to the RSP1A/RSP1B (bias-T, notch, PPM): modifies
     /// the parameter structure, then sends the matching Update. `apply` returns
     /// `true` if the value really changed: otherwise no Update is sent (rtl_tcp
@@ -2234,7 +2313,7 @@ impl SdrplayBackend {
                 // (valid range -72..-20). The old "1" was AGC_100HZ, a fast loop (100 Hz)
                 // with the default -60 dBFS set-point.
                 rx.ctrl_params.agc.enable = 4;
-                rx.ctrl_params.agc.set_point_dbfs = -30;
+                rx.ctrl_params.agc.set_point_dbfs = self.agc_setpoint_dbfs;
                 rx.ctrl_params.agc.attack_ms = 500;
                 rx.ctrl_params.agc.decay_ms = 500;
                 rx.ctrl_params.agc.decay_delay_ms = 200;

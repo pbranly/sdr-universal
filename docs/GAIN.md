@@ -48,10 +48,30 @@ the frequency change is sent, so the service never receives an invalid state.
 The gain announced by a client is the R820T's nominal gain, not the RSP's. The **real**
 RSP gain is published on the control port.
 
+## Direct gain controls (rsp_tcp extended)
+
+Clients of the [rsp_tcp extended server](USAGE.md#rsp_tcp-extended-server-16-bit-samples-and-native-controls)
+do not have to go through the 29-step scale: they set the RSP's own controls.
+
+| Command | Control | Range |
+|---|---|---|
+| `0x20` | LNA state | 0 to the band's highest state (see [Bands](#bands)) |
+| `0x21` | IF gain reduction (gRdB), in dB | 20 to 59 |
+| `0x22` | Hardware AGC on / off | |
+| `0x23` | AGC set-point, in dBFS | -72 to -20 |
+
+Values outside these ranges are refused with a warning and nothing changes. The LNA state
+is checked against the **current band** at the time of the command, since the same state
+does not exist in every band. Setting one of the two gain values keeps the other as it is.
+When the AGC is on, an LNA state change re-applies the AGC configuration (the AGC controls
+gRdB only), as `rsp_tcp` does. The control port reports the resulting total gain, so RF
+level estimates stay correct.
+
 ## Hardware AGC
 
 Used with the same settings as `rsp_tcp`: control scheme *CTRL_EN* (slow, 500 ms
-attack and decay, 200 ms decay delay), set-point **-30 dBFS**. The AGC moves gRdB only;
+attack and decay, 200 ms decay delay), set-point **-30 dBFS** (changeable with `0x23` on
+the rsp_tcp extended server). The AGC moves gRdB only;
 the LNA state stays where it was set. This slow loop suits a wide-band signal such as
 a DAB ensemble.
 

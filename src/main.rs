@@ -9,6 +9,8 @@ use backend::mock::MockBackend;
 #[cfg(feature = "sdrplay")]
 use backend::sdrplay::SdrplayBackend;
 use backend::Backend;
+use output::rsp_tcp::SampleFormat;
+use output::server::{Flavor, ServerHub};
 use output::RtltcpSink;
 
 use core::{
@@ -70,6 +72,12 @@ fn print_help() {
     println!("OPTIONS:");
     println!("    --port N           rtl_tcp port (default 1234); the control port is N+1");
     println!("    --bind ADDR        listen address (default 0.0.0.0, all interfaces; SDR_BIND)");
+    println!(
+        "        --rsp-port N   also serve SDRplay's rsp_tcp extended protocol on port N (SDR_RSP_PORT)"
+    );
+    println!(
+        "        --rsp-bits B   sample size of the rsp_tcp server: 16 (default) or 8 (SDR_RSP_BITS)"
+    );
     println!(
         "        --no-mdns      do not advertise the server on the local network (SDR_MDNS=0)"
     );
@@ -234,6 +242,33 @@ fn main() -> Result<()> {
         }
     }
 
+    // Optional second server: SDRplay's rsp_tcp extended protocol (16-bit samples
+    // and the RSP-specific controls), for clients such as SDroxide.
+    let rsp_port: Option<u16> = option_value("--rsp-port", Some("SDR_RSP_PORT"))?;
+    let rsp_bits: u8 = option_value("--rsp-bits", Some("SDR_RSP_BITS"))?.unwrap_or(16);
+
+    let rsp_format = match rsp_bits {
+        16 => SampleFormat::Int16,
+        8 => SampleFormat::Uint8,
+        other => {
+            return Err(anyhow::anyhow!(
+                "--rsp-bits: invalid value '{}' (8 or 16 expected)",
+                other
+            ))
+        }
+    };
+
+    if let Some(port) = rsp_port {
+        if port == rtltcp_port || port == control_port {
+            return Err(anyhow::anyhow!(
+                "--rsp-port {}: already used by the rtl_tcp port ({}) or the control port ({})",
+                port,
+                rtltcp_port,
+                control_port
+            ));
+        }
+    }
+
     let rtltcp_addr = std::net::SocketAddr::new(bind_ip, rtltcp_port).to_string();
     let control_addr = std::net::SocketAddr::new(bind_ip, control_port).to_string();
 
@@ -243,7 +278,16 @@ fn main() -> Result<()> {
     // consumer thread is ready before the first IQ blocks arrive.
     let iq_rx = radio.take_iq_receiver().expect("IQ receiver unavailable");
 
-    let (rtltcp_tx, rtltcp_commands) = RtltcpSink::start_server(&rtltcp_addr);
+    let (hub, rtltcp_tx, rtltcp_commands, demand) = ServerHub::start();
+
+    hub.listen(&rtltcp_addr, Flavor::RtlTcp);
+
+    if let Some(port) = rsp_port {
+        hub.listen(
+            &std::net::SocketAddr::new(bind_ip, port).to_string(),
+            Flavor::RspTcp(rsp_format),
+        );
+    }
 
     // Control port (rtl_tcp + 1): real RSP gain, for AbracaDABra's RF level.
     output::control::start_server(&control_addr);
@@ -295,7 +339,7 @@ fn main() -> Result<()> {
 
     let requested_sample_rate = Arc::new(AtomicU32::new(2_000_000));
 
-    let rtltcp = RtltcpSink::new(rtltcp_tx, Arc::clone(&requested_sample_rate));
+    let rtltcp = RtltcpSink::new(rtltcp_tx, demand, Arc::clone(&requested_sample_rate));
 
     std::thread::spawn(move || {
         let mut processor = core::IqProcessor::new();
@@ -403,10 +447,10 @@ fn main() -> Result<()> {
                 log::trace!("core received RTL-TCP command: {:?}", command);
 
                 if let output::rtltcp::RtltcpCommand::SetSampleRate(rate) = command {
-                    log::info!("RTL-TCP sample rate requested: {} Hz", rate);
+                    log::info!("sample rate requested: {} Hz", rate);
                 }
 
-                if let Some(core_command) = command.to_core_command(receiver.state().sample_rate) {
+                for core_command in command.to_core_commands(receiver.state().sample_rate) {
                     log::trace!("core command: {:?}", core_command);
 
                     match execute_command(&mut receiver, radio.as_mut(), core_command.clone()) {
