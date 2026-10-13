@@ -78,6 +78,20 @@ The analog filter follows the sample rate (see [USAGE.md](USAGE.md#sample-rate-a
 for example 600 kHz at 1.024 MS/s. If the client can send a bandwidth (command `0x40`) it
 may widen the filter up to the widest width that fits the rate, no more.
 
+## Receiver lost
+
+**I unplugged the RSP (or restarted the SDRplay service) and the stream stopped.**
+Expected: the gateway logs `receiver lost` and retries every 2 seconds
+(`recovery attempt N failed` until the receiver is back). Plug it back in, or wait for the
+service: the log then shows `receiver recovered`, and the clients get their data again with
+the settings they had. If it never recovers, check `sdrplay_apiService` and the USB cable,
+and that no other application has taken the RSP.
+
+**`receiver lost: no IQ data for 5 s while the stream is running`.**
+The receiver stopped sending samples without reporting an error (a stuck USB transfer). The
+gateway closes and reopens the session by itself. If it keeps happening, look at the USB
+port and cable, and at the power of the bus (a bias-T draws current).
+
 ## rsp_tcp extended server
 
 **SDroxide (or another rsp_tcp client) shows no RSP controls, or noise.**

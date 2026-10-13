@@ -88,6 +88,40 @@ gateway stops.
 **Not covered:** the SDRplay backend itself is not executed by these tests. Hardware
 tests are still needed.
 
+## The real SDRplay backend without a receiver
+
+Because the SDRplay API is loaded at run time, the **real** backend can be tested against a
+**fake `libsdrplay_api`** (`tests/fake_sdrplay_api/lib.rs`). The tests compile it as a shared
+library and start the gateway with `SDRPLAY_API_LIB` pointing at it (`tests/fake_api_e2e.rs`).
+
+The fake keeps the API's parameter structures as raw bytes, at the offsets of the real
+headers, and writes one line per call to the file named by `FAKE_SDRPLAY_LOG`. Reading that
+trace back checks what the gateway really wrote into the structures, independently of the
+gateway's own declarations. It can also unplug the device, hang the stream, or put the device
+back (`FAKE_SDRPLAY_REMOVE_AFTER_MS`, `FAKE_SDRPLAY_REPLUG_AFTER_MS`,
+`FAKE_SDRPLAY_HANG_AFTER_MS`, `FAKE_SDRPLAY_NO_DEVICE`).
+
+| Test | Checks |
+|---|---|
+| `the_receiver_is_configured_as_clients_ask` | Frequency, 1.024 MS/s with ADC 2.048 MS/s and decimation 2, filter capped to 600 kHz, the gain step's LNA state and gRdB, AGC off, bias-T and ppm, all read back from the fake |
+| `rates_from_62_5_khz_to_10_msps_reach_the_receiver` | ADC rate, decimation and filter for 2.4 MS/s, 250 kHz, 62.5 kHz and 6 MS/s |
+| `rsp_tcp_direct_controls_reach_the_receiver` | LNA state, IF gain reduction, AGC set-point and the two notch filters |
+| `a_device_removed_event_is_recovered_and_settings_are_restored` | Removal event, retries while the device is away, reopened session, frequency chosen during the outage applied afterwards, data back |
+| `a_silent_stream_is_detected_by_the_watchdog` | No event, only silence: detected after 5 s, recovered with a full close and reopen |
+| `starting_without_a_device_fails_cleanly` | `No SDRplay device detected`, non-zero exit, no panic |
+
+`src/backend/sdrplay/layout_tests.rs` also checks the size and offsets of every API structure
+the gateway declares against the values pinned (from the real headers) by the SDroxide project.
+
+The mock backend can simulate the same loss: `--mock-unplug-after S` makes the receiver
+disappear S seconds after the stream starts, and `--mock-replug-after S` (default 2) brings it
+back. `a_lost_receiver_is_recovered_with_the_settings_clients_chose` uses it with real
+clients' commands.
+
+**Limit.** The fake and the gateway were written from the same understanding of the API: the
+fake catches regressions and ABI slips (structure layout, update reasons, event ids), but it
+cannot prove the real service behaves the same way. Hardware tests remain necessary.
+
 ## Hardware checklist
 
 Run with a real RSP1B:
@@ -104,6 +138,6 @@ Run with a real RSP1B:
 - [ ] 16-bit stream at 2.048 MS/s and at 6–10 MS/s over your network: no `client too slow` warnings.
 - [ ] Switching between an rtl_tcp client (AbracaDABra) and an rsp_tcp client (SDroxide) on the two ports: each is served once the other has left.
 - [ ] Ctrl+C, then an immediate restart: the RSP is released and found again.
-- [ ] Unplug and replug the RSP; restart the SDRplay API service.
+- [ ] Unplug and replug the RSP, and restart the SDRplay API service, while a client streams: `receiver lost`, then `receiver recovered`, and the client's settings are back.
 - [ ] Endurance: one hour on a stable channel (CPU use, no dropped audio).
 - [ ] RF level calibration against a signal of known level.

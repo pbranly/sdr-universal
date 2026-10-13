@@ -25,6 +25,10 @@ rtl_tcp port (default 1234). The control port is N+1.
 Listen address for both ports (default 0.0.0.0, all interfaces; same as SDR_BIND).
 Use 127.0.0.1 to accept only connections from the local machine.
 .TP
+.BI \-\-mock\-unplug\-after " S"
+With \fB\-\-mock\fR: the simulated receiver disappears S seconds after the stream starts
+(for testing the recovery). \fB\-\-mock\-replug\-after\fR S brings it back (default 2).
+.TP
 .BI \-\-rsp\-port " N"
 Also serve SDRplay's rsp_tcp extended protocol on port N (same as SDR_RSP_PORT): signed
 16-bit samples and the RSP's own controls (LNA state, IF gain reduction, AGC set-point,

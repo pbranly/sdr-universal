@@ -27,7 +27,8 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::backend::gain::{self, Band};
-use crate::backend::Backend;
+use crate::backend::replay::DesiredSettings;
+use crate::backend::{Backend, Health};
 use crate::core::capabilities::{DEFAULT_AGC_SETPOINT_DBFS, IF_GAIN_REDUCTION_RANGE_DB};
 use crate::core::{rates, telemetry, Event, GainMode, IqBlock, IqSample};
 
@@ -77,6 +78,8 @@ struct Shared {
     lna_state: u8,
     gr_db: i32,
     gain_index: usize,
+    /// The gain was last chosen with the LNA state / IF gain reduction directly.
+    direct_gain: bool,
     agc_on: bool,
     /// Hardware AGC set-point, in dBFS.
     agc_setpoint_dbfs: i32,
@@ -97,40 +100,75 @@ pub struct MockBackend {
     worker: Option<JoinHandle<()>>,
     connected: bool,
     last_overload_log: Instant,
+    /// Settings applied so far, replayed after a simulated unplug.
+    desired: DesiredSettings,
+    /// Simulated unplug: when (after the stream started) and for how long.
+    failure: Option<Failure>,
+    stream_started_at: Option<Instant>,
+    unplugged_at: Option<Instant>,
+    failure_done: bool,
+}
+
+/// Simulated loss of the receiver, to exercise the recovery logic without
+/// hardware (`--mock-unplug-after` and `--mock-replug-after`).
+#[derive(Debug, Clone, Copy)]
+pub struct Failure {
+    /// Delay between the start of the IQ stream and the unplug.
+    pub unplug_after: Duration,
+    /// Delay between the unplug and the receiver coming back.
+    pub replug_after: Duration,
+}
+
+/// What a freshly (re)connected receiver is set to, before any client asks.
+fn default_shared(level_dbm: f64) -> Shared {
+    let band = Band::from_hz(100_000_000);
+    let (lna_state, gr_db) = gain::settings(band, gain::DEFAULT_GAIN_INDEX);
+
+    Shared {
+        frequency_hz: 100_000_000,
+        band,
+        sample_rate: 2_000_000,
+        bandwidth_hz: 200_000,
+        lna_state,
+        gr_db,
+        gain_index: gain::DEFAULT_GAIN_INDEX,
+        direct_gain: false,
+        agc_on: false,
+        agc_setpoint_dbfs: DEFAULT_AGC_SETPOINT_DBFS,
+        level_dbm,
+        overload: false,
+        overload_events: 0,
+        bias_t: false,
+        rf_notch: false,
+        dab_notch: false,
+        ppm: 0.0,
+    }
 }
 
 impl MockBackend {
     pub fn new(level_dbm: f64) -> Self {
         let (tx, rx) = sync_channel(1024);
-        let band = Band::from_hz(100_000_000);
-        let (lna_state, gr_db) = gain::settings(band, gain::DEFAULT_GAIN_INDEX);
 
         Self {
-            shared: Arc::new(Mutex::new(Shared {
-                frequency_hz: 100_000_000,
-                band,
-                sample_rate: 2_000_000,
-                bandwidth_hz: 200_000,
-                lna_state,
-                gr_db,
-                gain_index: gain::DEFAULT_GAIN_INDEX,
-                agc_on: false,
-                agc_setpoint_dbfs: DEFAULT_AGC_SETPOINT_DBFS,
-                level_dbm,
-                overload: false,
-                overload_events: 0,
-                bias_t: false,
-                rf_notch: false,
-                dab_notch: false,
-                ppm: 0.0,
-            })),
+            shared: Arc::new(Mutex::new(default_shared(level_dbm))),
             tx: Some(tx),
             rx: Some(rx),
             stop: Arc::new(AtomicBool::new(false)),
             worker: None,
             connected: false,
             last_overload_log: Instant::now(),
+            desired: DesiredSettings::new(),
+            failure: None,
+            stream_started_at: None,
+            unplugged_at: None,
+            failure_done: false,
         }
+    }
+
+    /// Makes the receiver "disappear" once, after the stream started.
+    pub fn with_failure(mut self, failure: Failure) -> Self {
+        self.failure = Some(failure);
+        self
     }
 
     fn set_gain_index(&mut self, index: usize) -> Result<()> {
@@ -141,6 +179,7 @@ impl MockBackend {
         s.lna_state = lna_state;
         s.gr_db = gr_db;
         s.gain_index = index;
+        s.direct_gain = false;
 
         let total = total_gain_db(lna_state, gr_db);
         telemetry::set_total_gain_db(total);
@@ -300,26 +339,68 @@ fn generate(shared: Arc<Mutex<Shared>>, tx: SyncSender<IqBlock>, stop: Arc<Atomi
     }
 }
 
-impl Backend for MockBackend {
-    fn connect(&mut self) -> Result<()> {
-        self.connected = true;
-        log::info!("mock backend connected (no hardware, simulated antenna level)");
+impl MockBackend {
+    fn check_health(&mut self) -> Health {
+        if self.unplugged_at.is_some() {
+            return Health::Lost("receiver unplugged (simulated)".to_string());
+        }
 
-        let s = self.shared.lock().unwrap();
-        telemetry::set_total_gain_db(total_gain_db(s.lna_state, s.gr_db));
+        let Some(failure) = self.failure else {
+            return Health::Healthy;
+        };
+
+        let due = self
+            .stream_started_at
+            .map(|started| started.elapsed() >= failure.unplug_after)
+            .unwrap_or(false);
+
+        if due && !self.failure_done {
+            self.failure_done = true;
+            self.unplugged_at = Some(Instant::now());
+
+            // The stream stops, and the receiver forgets its settings.
+            self.stop_worker();
+            let level_dbm = self.shared.lock().unwrap().level_dbm;
+            *self.shared.lock().unwrap() = default_shared(level_dbm);
+
+            return Health::Lost("receiver unplugged (simulated)".to_string());
+        }
+
+        Health::Healthy
+    }
+
+    fn try_recover(&mut self) -> Result<()> {
+        let (Some(unplugged_at), Some(failure)) = (self.unplugged_at, self.failure) else {
+            return Ok(());
+        };
+
+        if unplugged_at.elapsed() < failure.replug_after {
+            return Err(anyhow::anyhow!("no SDRplay device detected"));
+        }
+
+        self.unplugged_at = None;
+        log::info!("mock receiver is back: re-applying the settings");
+
+        for event in self.desired.settings() {
+            if let Err(e) = self.apply_event_inner(&event) {
+                log::warn!("could not re-apply {:?}: {}", event, e);
+            }
+        }
+
+        if self.desired.stream_wanted() {
+            self.start_worker();
+        }
 
         Ok(())
     }
+}
 
-    fn disconnect(&mut self) {
-        self.stop_worker();
-        self.connected = false;
-    }
-
-    fn apply_event(&mut self, event: &Event) -> Result<()> {
+impl MockBackend {
+    /// Applies an event without remembering it (also used to replay settings).
+    fn apply_event_inner(&mut self, event: &Event) -> Result<()> {
         match event {
             Event::FrequencyChanged(frequency_hz) => {
-                let (old_band, new_band, index) = {
+                let (old_band, new_band, index, direct) = {
                     let mut s = self.shared.lock().unwrap();
                     let old = s.band;
                     let new = Band::from_hz(*frequency_hz);
@@ -331,17 +412,25 @@ impl Backend for MockBackend {
                         s.lna_state = new.max_lna_state();
                     }
 
-                    (old, new, s.gain_index)
+                    (old, new, s.gain_index, s.direct_gain)
                 };
 
                 if new_band != old_band {
-                    log::info!(
-                        "Band change {:?} -> {:?}: gain re-applied (step {})",
-                        old_band,
-                        new_band,
-                        index
-                    );
-                    self.set_gain_index(index)?;
+                    if direct {
+                        log::info!(
+                            "Band change {:?} -> {:?}: direct gain kept",
+                            old_band,
+                            new_band
+                        );
+                    } else {
+                        log::info!(
+                            "Band change {:?} -> {:?}: gain re-applied (step {})",
+                            old_band,
+                            new_band,
+                            index
+                        );
+                        self.set_gain_index(index)?;
+                    }
                 }
             }
 
@@ -388,6 +477,7 @@ impl Backend for MockBackend {
                     }
 
                     s.lna_state = *lna_state;
+                    s.direct_gain = true;
                     (s.band, s.gr_db, s.agc_on)
                 };
 
@@ -398,6 +488,7 @@ impl Backend for MockBackend {
                 let (band, lna_state, agc_on) = {
                     let mut s = self.shared.lock().unwrap();
                     s.gr_db = *gr_db;
+                    s.direct_gain = true;
                     (s.band, s.lna_state, s.agc_on)
                 };
 
@@ -487,11 +578,44 @@ impl Backend for MockBackend {
                 }
             }
 
-            Event::IqStarted => self.start_worker(),
+            Event::IqStarted => {
+                self.stream_started_at.get_or_insert_with(Instant::now);
+                self.start_worker()
+            }
             Event::IqStopped => self.stop_worker(),
 
             _ => {}
         }
+
+        Ok(())
+    }
+}
+
+impl Backend for MockBackend {
+    fn connect(&mut self) -> Result<()> {
+        self.connected = true;
+        log::info!("mock backend connected (no hardware, simulated antenna level)");
+
+        let s = self.shared.lock().unwrap();
+        telemetry::set_total_gain_db(total_gain_db(s.lna_state, s.gr_db));
+
+        Ok(())
+    }
+
+    fn disconnect(&mut self) {
+        self.stop_worker();
+        self.connected = false;
+    }
+
+    fn apply_event(&mut self, event: &Event) -> Result<()> {
+        if self.unplugged_at.is_some() {
+            // Not applied, but remembered: replayed when the receiver is back.
+            self.desired.record(event);
+            return Err(anyhow::anyhow!("receiver not connected (unplugged)"));
+        }
+
+        self.apply_event_inner(event)?;
+        self.desired.record(event);
 
         Ok(())
     }
@@ -515,6 +639,14 @@ impl Backend for MockBackend {
             s.overload_events = 0;
             self.last_overload_log = Instant::now();
         }
+    }
+
+    fn health(&mut self) -> Health {
+        self.check_health()
+    }
+
+    fn recover(&mut self) -> Result<()> {
+        self.try_recover()
     }
 }
 

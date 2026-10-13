@@ -35,6 +35,10 @@ It is written in Rust and talks to the receiver through the official SDRplay API
 - **Automatic discovery.** The server is advertised on the local network
   (mDNS, `_rtl_tcp._tcp`), so clients that browse for rtl_tcp servers, such as
   NyxScope, list it without typing an address.
+- **Survives the loss of the receiver.** If the RSP is unplugged, fails, or its service
+  restarts, the gateway keeps its clients connected, retries every 2 seconds, and when the
+  receiver is back re-applies the frequency, rate, gain and the other settings clients had
+  chosen. See [docs/USAGE.md](docs/USAGE.md#if-the-receiver-is-lost).
 - **Per-band gain control.** A gain step is translated into the RSP's two gain
   controls (*LNA state* and *IF gain reduction*) using a table **for the current
   band**; it is re-applied automatically when the frequency crosses a band

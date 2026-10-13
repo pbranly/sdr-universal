@@ -5,279 +5,13 @@
 //! Run with `cargo test`. The mock backend is always compiled, so this works
 //! with or without the `sdrplay` feature, and without the SDRplay API.
 
-use std::io::{Read, Write};
-use std::net::TcpStream;
-use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicU16, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+mod common;
+
+use common::*;
+use std::io::Read;
+use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
-
-static NEXT_PORT: AtomicU16 = AtomicU16::new(0);
-
-/// Simulated antenna level, in dBm.
-const LEVEL_DBM: f64 = -75.0;
-
-struct Gateway {
-    child: Child,
-    port: u16,
-    /// Port of the optional rsp_tcp server (`--rsp-port {rsp}`).
-    rsp_port: u16,
-    logs: Arc<Mutex<Vec<String>>>,
-}
-
-impl Gateway {
-    fn start() -> Gateway {
-        Gateway::start_with(&[])
-    }
-
-    fn start_with(extra_args: &[&str]) -> Gateway {
-        let port = 21000
-            + (std::process::id() % 1000) as u16 * 20
-            + NEXT_PORT.fetch_add(4, Ordering::SeqCst);
-
-        let mut child = Command::new(env!("CARGO_BIN_EXE_sdr-universal"))
-            .args([
-                "--mock",
-                "--port",
-                &port.to_string(),
-                "--mock-level",
-                &LEVEL_DBM.to_string(),
-            ])
-            .args(extra_args.iter().map(|arg| {
-                if *arg == "{rsp}" {
-                    (port + 2).to_string()
-                } else {
-                    arg.to_string()
-                }
-            }))
-            // Tests must not advertise services on the real network: only the
-            // ones that pass `--name` exercise the mDNS advertisement.
-            .args(if extra_args.contains(&"--name") {
-                None
-            } else {
-                Some("--no-mdns")
-            })
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .expect("starting the gateway");
-
-        let logs = Arc::new(Mutex::new(Vec::new()));
-
-        fn collect(stream: impl Read + Send + 'static, logs: Arc<Mutex<Vec<String>>>) {
-            thread::spawn(move || {
-                use std::io::{BufRead, BufReader};
-                for line in BufReader::new(stream).lines().map_while(Result::ok) {
-                    logs.lock().unwrap().push(line);
-                }
-            });
-        }
-
-        collect(child.stdout.take().unwrap(), Arc::clone(&logs));
-        collect(child.stderr.take().unwrap(), Arc::clone(&logs));
-
-        let gw = Gateway {
-            child,
-            port,
-            rsp_port: port + 2,
-            logs,
-        };
-        assert!(
-            gw.wait_log("waiting for RTL-TCP commands", Duration::from_secs(20)),
-            "the gateway did not start:\n{}",
-            gw.dump()
-        );
-        gw
-    }
-
-    fn log_contains(&self, needle: &str) -> bool {
-        self.logs.lock().unwrap().iter().any(|l| l.contains(needle))
-    }
-
-    fn wait_log(&self, needle: &str, timeout: Duration) -> bool {
-        let start = Instant::now();
-        while start.elapsed() < timeout {
-            if self.log_contains(needle) {
-                return true;
-            }
-            thread::sleep(Duration::from_millis(50));
-        }
-        false
-    }
-
-    /// Latest log line containing `needle`.
-    fn last_log(&self, needle: &str) -> Option<String> {
-        self.logs
-            .lock()
-            .unwrap()
-            .iter()
-            .rev()
-            .find(|line| line.contains(needle))
-            .cloned()
-    }
-
-    fn dump(&self) -> String {
-        self.logs.lock().unwrap().join("\n")
-    }
-
-    fn client(&self) -> Client {
-        Client::connect(self.port)
-    }
-
-    /// Latest frame of the control port: (announced gain in dB, overload).
-    fn control(&self) -> (f64, bool) {
-        let mut s = connect_retry(self.port + 1);
-        s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
-        let mut frame = [0u8; 11];
-        s.read_exact(&mut frame).expect("control frame");
-        assert_eq!(((frame[0] as usize) << 8) | frame[1] as usize, 11);
-        assert_eq!(&frame[2..5], &[0, 0, 2], "indication de gain");
-        assert_eq!(frame[7], 0x86, "indication de surcharge");
-        let tenths = i16::from_be_bytes([frame[5], frame[6]]);
-        (tenths as f64 / 10.0, frame[10] != 0)
-    }
-}
-
-impl Drop for Gateway {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-
-fn connect_retry(port: u16) -> TcpStream {
-    let start = Instant::now();
-    loop {
-        match TcpStream::connect(("127.0.0.1", port)) {
-            Ok(s) => return s,
-            Err(e) if start.elapsed() > Duration::from_secs(10) => {
-                panic!("connecting to port {}: {}", port, e)
-            }
-            Err(_) => thread::sleep(Duration::from_millis(100)),
-        }
-    }
-}
-
-struct Client {
-    stream: TcpStream,
-    header: [u8; 12],
-    window: Arc<Mutex<Vec<u8>>>,
-    total: Arc<AtomicU64>,
-}
-
-impl Client {
-    fn connect(port: u16) -> Client {
-        Client::connect_with_greeting(port, 0).0
-    }
-
-    /// Connects to the rsp_tcp server: also returns the 45-byte `RSP0` block.
-    fn connect_rsp(port: u16) -> (Client, [u8; 45]) {
-        let (client, extra) = Client::connect_with_greeting(port, 45);
-        (client, extra.try_into().expect("45 bytes"))
-    }
-
-    fn connect_with_greeting(port: u16, extra_len: usize) -> (Client, Vec<u8>) {
-        let mut stream = connect_retry(port);
-        stream
-            .set_read_timeout(Some(Duration::from_secs(10)))
-            .unwrap();
-
-        let mut header = [0u8; 12];
-        stream.read_exact(&mut header).expect("RTL0 header");
-
-        let mut extra = vec![0u8; extra_len];
-        stream.read_exact(&mut extra).expect("RSP0 block");
-
-        let window = Arc::new(Mutex::new(Vec::new()));
-        let total = Arc::new(AtomicU64::new(0));
-
-        let mut reader = stream.try_clone().unwrap();
-        let (w, t) = (Arc::clone(&window), Arc::clone(&total));
-
-        thread::spawn(move || {
-            let mut buf = vec![0u8; 65536];
-            while let Ok(n) = reader.read(&mut buf) {
-                if n == 0 {
-                    break;
-                }
-                t.fetch_add(n as u64, Ordering::Relaxed);
-                let mut win = w.lock().unwrap();
-                win.extend_from_slice(&buf[..n]);
-                let len = win.len();
-                if len > 65536 {
-                    // Keep whole samples (up to 4 bytes) at the start of the window.
-                    let excess = len - 65536;
-                    win.drain(..excess - excess % 4);
-                }
-            }
-        });
-
-        (
-            Client {
-                stream,
-                header,
-                window,
-                total,
-            },
-            extra,
-        )
-    }
-
-    fn cmd(&mut self, op: u8, value: u32) {
-        let mut msg = [0u8; 5];
-        msg[0] = op;
-        msg[1..].copy_from_slice(&value.to_be_bytes());
-        self.stream.write_all(&msg).expect("sending a command");
-    }
-
-    fn total_bytes(&self) -> u64 {
-        self.total.load(Ordering::Relaxed)
-    }
-
-    /// RMS of one component, in byte units (centred on 128).
-    fn rms_bytes(&self) -> f64 {
-        let win = self.window.lock().unwrap();
-        let tail = &win[win.len().saturating_sub(32768)..];
-        let power: f64 = tail
-            .iter()
-            .map(|&b| (b as f64 - 128.0).powi(2))
-            .sum::<f64>()
-            / tail.len() as f64;
-        power.sqrt()
-    }
-
-    /// RMS of one component for signed 16-bit little-endian samples.
-    fn rms_i16(&self) -> f64 {
-        let win = self.window.lock().unwrap();
-        let tail = &win[win.len().saturating_sub(32768)..];
-        let values: Vec<f64> = tail
-            .chunks_exact(2)
-            .map(|c| i16::from_le_bytes([c[0], c[1]]) as f64)
-            .collect();
-        (values.iter().map(|v| v * v).sum::<f64>() / values.len() as f64).sqrt()
-    }
-
-    fn min_max(&self) -> (u8, u8) {
-        let win = self.window.lock().unwrap();
-        let tail = &win[win.len().saturating_sub(32768)..];
-        (*tail.iter().min().unwrap(), *tail.iter().max().unwrap())
-    }
-}
-
-impl Drop for Client {
-    fn drop(&mut self) {
-        let _ = self.stream.shutdown(std::net::Shutdown::Both);
-    }
-}
-
-/// RF level estimate as AbracaDABra computes it:
-/// 20·log10(level in bytes) - announced gain - 46 (user offset of zero).
-fn rf_estimate_dbm(rms_bytes: f64, announced_gain_db: f64) -> f64 {
-    20.0 * rms_bytes.log10() - announced_gain_db - 46.0
-}
-
-const SETTLE: Duration = Duration::from_millis(900);
 
 #[test]
 fn header_and_realtime_stream() {
@@ -523,55 +257,6 @@ fn ctrl_c_stops_cleanly() {
     );
 }
 
-/// Starts the gateway with arguments and waits for it to finish (5 s at most:
-/// a command that must fail or stop right away must never stay running).
-fn run_cli(args: &[&str], envs: &[(&str, &str)]) -> std::process::Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_sdr-universal"));
-    command
-        .args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    for (key, value) in envs {
-        command.env(key, value);
-    }
-
-    let mut child = command.spawn().expect("starting the gateway");
-    let start = Instant::now();
-
-    let status = loop {
-        if let Some(status) = child.try_wait().unwrap() {
-            break status;
-        }
-        if start.elapsed() > Duration::from_secs(5) {
-            let _ = child.kill();
-            let _ = child.wait();
-            panic!("the command {:?} did not stop by itself", args);
-        }
-        thread::sleep(Duration::from_millis(50));
-    };
-
-    let mut stdout = Vec::new();
-    let mut stderr = Vec::new();
-    child
-        .stdout
-        .take()
-        .unwrap()
-        .read_to_end(&mut stdout)
-        .unwrap();
-    child
-        .stderr
-        .take()
-        .unwrap()
-        .read_to_end(&mut stderr)
-        .unwrap();
-
-    std::process::Output {
-        status,
-        stdout,
-        stderr,
-    }
-}
-
 #[test]
 fn version_flag_reports_the_package_version() {
     for flag in ["--version", "-V"] {
@@ -676,7 +361,7 @@ fn default_bind_warns_about_all_interfaces() {
 
 #[test]
 fn invalid_option_values_are_rejected_at_start_up() {
-    let cases: [(&[&str], &str); 9] = [
+    let cases: [(&[&str], &str); 12] = [
         (&["--mock", "--bind", "not-an-ip"], "--bind"),
         (&["--mock", "--port", "abc"], "--port"),
         (&["--mock", "--port", "70000"], "--port"),
@@ -692,6 +377,15 @@ fn invalid_option_values_are_rejected_at_start_up() {
             &["--mock", "--port", "23456", "--rsp-port", "23457"],
             "--rsp-port",
         ),
+        (
+            &["--mock", "--mock-replug-after", "3"],
+            "--mock-replug-after",
+        ),
+        (
+            &["--mock", "--mock-unplug-after", "-1"],
+            "--mock-unplug-after",
+        ),
+        (&["--mock-unplug-after", "1"], "--mock-unplug-after"),
     ];
 
     for (args, expected) in cases {
@@ -702,14 +396,6 @@ fn invalid_option_values_are_rejected_at_start_up() {
         assert!(stderr.contains(expected), "{:?} : {}", args, stderr);
         assert!(!stderr.contains("panicked"), "{:?} : {}", args, stderr);
     }
-}
-
-/// Bytes per second received over `window`.
-fn throughput(client: &Client, window: Duration) -> f64 {
-    let before = client.total_bytes();
-    let start = Instant::now();
-    thread::sleep(window);
-    (client.total_bytes() - before) as f64 / start.elapsed().as_secs_f64()
 }
 
 #[test]
@@ -942,50 +628,6 @@ fn mdns_advertisement_is_discoverable() {
     assert!(
         removed,
         "the service was not withdrawn when the gateway stopped"
-    );
-}
-
-/// Decoded `RSP0` capability block.
-struct RspBlock {
-    version: u32,
-    capabilities: u32,
-    hardware_version: u32,
-    sample_format: u32,
-    antennas: u8,
-    tuners: u8,
-    ifgr_min: u8,
-    ifgr_max: u8,
-}
-
-fn parse_rsp_block(block: &[u8; 45]) -> RspBlock {
-    assert_eq!(&block[..4], b"RSP0", "magic of the capability block");
-    let be = |i: usize| u32::from_be_bytes([block[i], block[i + 1], block[i + 2], block[i + 3]]);
-
-    RspBlock {
-        version: be(4),
-        capabilities: be(8),
-        hardware_version: be(16),
-        sample_format: be(20),
-        antennas: block[24],
-        tuners: block[42],
-        ifgr_min: block[43],
-        ifgr_max: block[44],
-    }
-}
-
-/// Component RMS expected for a digital level, in dBFS, on the API's ±32768 scale.
-fn rms_for_dbfs(dbfs: f64) -> f64 {
-    10f64.powf(dbfs / 20.0) * 32768.0
-}
-
-fn assert_close(measured: f64, expected: f64, tolerance: f64, what: &str) {
-    assert!(
-        (measured - expected).abs() <= expected * tolerance,
-        "{}: measured {:.0}, expected {:.0} (±{:.0}%)",
-        what,
-        measured,
-        expected,
-        tolerance * 100.0
     );
 }
 
@@ -1293,4 +935,160 @@ fn a_stalled_client_cannot_exhaust_the_gateway_memory() {
     assert!(rss_kb < 200_000, "gateway memory: {} kB", rss_kb);
 
     drop(raw);
+}
+
+#[test]
+fn a_lost_receiver_is_recovered_with_the_settings_clients_chose() {
+    // The receiver disappears 6 s after the stream starts and comes back 4 s later.
+    let gw = Gateway::start_with(&[
+        "--rsp-port",
+        "{rsp}",
+        "--mock-unplug-after",
+        "6",
+        "--mock-replug-after",
+        "4",
+    ]);
+    let (mut client, _) = Client::connect_rsp(gw.rsp_port);
+
+    client.cmd(0x01, 195_936_000);
+    client.cmd(0x22, 0); // hardware AGC off
+    client.cmd(0x20, 5); // LNA state
+    client.cmd(0x21, 44); // IF gain reduction
+    thread::sleep(Duration::from_millis(1200));
+
+    // Healthy: total gain 35.6 dB, antenna at -75 dBm: -39.4 dBFS.
+    let before = client.rms_i16();
+    assert_close(before, rms_for_dbfs(-39.4), 0.2, "level before the loss");
+
+    assert!(
+        gw.wait_log("receiver lost", Duration::from_secs(15)),
+        "{}",
+        gw.dump()
+    );
+    assert!(
+        gw.log_contains(" ERROR "),
+        "the loss must be an error: {}",
+        gw.dump()
+    );
+
+    // While the receiver is away the client keeps talking to the gateway: its
+    // choices are kept and applied when the receiver is back.
+    client.cmd(0x21, 30); // 14 dB more signal
+    client.cmd(0x01, 178_352_000);
+    thread::sleep(Duration::from_millis(800));
+
+    let silent = throughput(&client, Duration::from_millis(1000));
+    assert!(
+        silent < 200_000.0,
+        "no data expected while lost: {:.0} bytes/s",
+        silent
+    );
+    assert!(
+        !gw.log_contains("Core command failed"),
+        "commands during the outage are kept, not errors:\n{}",
+        gw.dump()
+    );
+
+    assert!(
+        gw.wait_log("receiver recovered", Duration::from_secs(20)),
+        "{}",
+        gw.dump()
+    );
+    assert!(
+        gw.log_contains("recovery attempt 1 failed"),
+        "the first attempt comes before the replug: {}",
+        gw.dump()
+    );
+
+    // The settings made DURING the outage were applied after the recovery.
+    let back = log_position(&gw, "mock receiver is back").expect("replay start");
+    let replayed = gw.logs.lock().unwrap()[back..]
+        .iter()
+        .any(|line| line.contains("direct LNA=5 gRdB=30"));
+    assert!(replayed, "{}", gw.dump());
+
+    thread::sleep(Duration::from_millis(1500));
+    let after = client.rms_i16();
+    assert_close(after, rms_for_dbfs(-25.4), 0.25, "level after the recovery");
+
+    // The stream is back at full rate, and the control port reports the new gain.
+    let flowing = throughput(&client, Duration::from_millis(1000));
+    assert!(flowing > 6_000_000.0, "stream back: {:.0} bytes/s", flowing);
+    let (announced, _) = gw.control();
+    assert!(announced > 49.6, "announced gain {}", announced);
+}
+
+#[test]
+fn direct_gain_survives_a_band_change_but_a_gain_step_is_re_applied() {
+    let gw = Gateway::start_with(&["--rsp-port", "{rsp}"]);
+    let (mut client, _) = Client::connect_rsp(gw.rsp_port);
+
+    client.cmd(0x22, 0); // hardware AGC off
+    client.cmd(0x01, 100_000_000); // VHF
+    client.cmd(0x20, 4);
+    client.cmd(0x21, 40);
+    assert!(
+        gw.wait_log("direct LNA=4 gRdB=40", Duration::from_secs(5)),
+        "{}",
+        gw.dump()
+    );
+    thread::sleep(Duration::from_millis(1000));
+    let vhf = client.rms_i16();
+
+    // Crossing into band III: the client's own LNA state and IF gain reduction stay.
+    client.cmd(0x01, 195_936_000);
+    assert!(
+        gw.wait_log(
+            "Band change Vhf -> Band3: direct gain kept",
+            Duration::from_secs(5)
+        ),
+        "{}",
+        gw.dump()
+    );
+    thread::sleep(Duration::from_millis(1000));
+    assert_close(
+        client.rms_i16() / vhf,
+        1.0,
+        0.1,
+        "level across the band change",
+    );
+
+    // An LNA state that the next band does not have is brought down to its highest.
+    client.cmd(0x20, 9);
+    thread::sleep(Duration::from_millis(500));
+    let lna9 = client.rms_i16();
+    client.cmd(0x01, 1_090_000_000); // L-band: highest state 8
+    assert!(
+        gw.wait_log(
+            "Band change Band3 -> LBand: direct gain kept",
+            Duration::from_secs(5)
+        ),
+        "{}",
+        gw.dump()
+    );
+    thread::sleep(Duration::from_millis(1000));
+    // State 8 attenuates 5 dB less than state 9 in the mock's LNA table.
+    assert_close(
+        client.rms_i16() / lna9,
+        10f64.powf(5.0 / 20.0),
+        0.15,
+        "level after the LNA state was brought down",
+    );
+
+    // A client that chooses a step of the 29-step scale gets it re-applied.
+    client.cmd(0x0D, 14);
+    assert!(
+        gw.wait_log("step=14/28", Duration::from_secs(5)),
+        "{}",
+        gw.dump()
+    );
+    client.cmd(0x01, 195_936_000);
+    assert!(
+        gw.wait_log(
+            "Band change LBand -> Band3: gain re-applied (step 14)",
+            Duration::from_secs(5)
+        ),
+        "{}",
+        gw.dump()
+    );
 }

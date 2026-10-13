@@ -35,6 +35,11 @@ When the frequency crosses a band boundary the **same step** is re-applied with 
 new band's table. The LNA state is also clamped to what the new band supports before
 the frequency change is sent, so the service never receives an invalid state.
 
+A client that chose the LNA state and the IF gain reduction **directly** (rsp_tcp extended)
+is not given a step back: on a band change it keeps its two values, with the LNA state
+brought down to the new band's highest if needed. The log says `direct gain kept` instead of
+`gain re-applied`.
+
 ## From rtl_tcp commands to a step
 
 | Client command | Result |

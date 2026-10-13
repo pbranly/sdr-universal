@@ -5,10 +5,11 @@ mod output;
 
 use anyhow::Result;
 
-use backend::mock::MockBackend;
+use backend::mock::{Failure, MockBackend};
 #[cfg(feature = "sdrplay")]
 use backend::sdrplay::SdrplayBackend;
 use backend::Backend;
+use backend::Health;
 use output::rsp_tcp::SampleFormat;
 use output::server::{Flavor, ServerHub};
 use output::RtltcpSink;
@@ -87,6 +88,8 @@ fn print_help() {
     println!(
         "        --mock-level D simulated antenna level in dBm (default -75, SDR_MOCK_LEVEL_DBM)"
     );
+    println!("        --mock-unplug-after S   mock: the receiver disappears S seconds after the stream starts (testing)");
+    println!("        --mock-replug-after S   mock: ...and comes back S seconds later (default 2, testing)");
     println!("    -V, --version      print the version and exit");
     println!("    -h, --help         print this help and exit");
     println!();
@@ -98,13 +101,28 @@ fn print_help() {
 }
 
 /// Real (SDRplay) or mock backend (--mock / SDR_MOCK=1, no hardware).
-fn create_backend(mock: bool, mock_level_dbm: f64) -> Result<Box<dyn Backend>> {
+fn create_backend(
+    mock: bool,
+    mock_level_dbm: f64,
+    failure: Option<Failure>,
+) -> Result<Box<dyn Backend>> {
     if mock {
         log::info!(
             "MOCK MODE: no hardware, simulated antenna level {} dBm",
             mock_level_dbm
         );
-        return Ok(Box::new(MockBackend::new(mock_level_dbm)));
+        let mut backend = MockBackend::new(mock_level_dbm);
+
+        if let Some(failure) = failure {
+            log::info!(
+                "MOCK MODE: the receiver will disappear {:.1} s after the stream starts, and come back {:.1} s later",
+                failure.unplug_after.as_secs_f64(),
+                failure.replug_after.as_secs_f64()
+            );
+            backend = backend.with_failure(failure);
+        }
+
+        return Ok(Box::new(backend));
     }
 
     #[cfg(feature = "sdrplay")]
@@ -121,6 +139,16 @@ fn create_backend(mock: bool, mock_level_dbm: f64) -> Result<Box<dyn Backend>> {
             "Built without the SDRplay backend: run again with --mock"
         ))
     }
+}
+
+/// Delay between two attempts to bring a lost receiver back.
+const RECOVERY_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// A receiver that was lost and is being recovered.
+struct Recovery {
+    lost_at: std::time::Instant,
+    next_attempt: std::time::Instant,
+    attempts: u32,
 }
 
 fn execute_command(
@@ -272,7 +300,45 @@ fn main() -> Result<()> {
     let rtltcp_addr = std::net::SocketAddr::new(bind_ip, rtltcp_port).to_string();
     let control_addr = std::net::SocketAddr::new(bind_ip, control_port).to_string();
 
-    let mut radio = create_backend(use_mock, mock_level_dbm)?;
+    // Simulated loss of the receiver (mock only): exercises the recovery logic.
+    let unplug_after: Option<f64> = option_value("--mock-unplug-after", None)?;
+    let replug_after: Option<f64> = option_value("--mock-replug-after", None)?;
+
+    let failure = match (unplug_after, replug_after) {
+        (None, None) => None,
+        (None, Some(_)) => {
+            return Err(anyhow::anyhow!(
+                "--mock-replug-after needs --mock-unplug-after"
+            ))
+        }
+        (Some(unplug), replug) => {
+            let replug = replug.unwrap_or(2.0);
+
+            if !use_mock {
+                return Err(anyhow::anyhow!("--mock-unplug-after needs --mock"));
+            }
+
+            for (name, value) in [
+                ("--mock-unplug-after", unplug),
+                ("--mock-replug-after", replug),
+            ] {
+                if !value.is_finite() || value < 0.0 {
+                    return Err(anyhow::anyhow!(
+                        "{}: invalid value '{}' (a number of seconds, 0 or more)",
+                        name,
+                        value
+                    ));
+                }
+            }
+
+            Some(Failure {
+                unplug_after: std::time::Duration::from_secs_f64(unplug),
+                replug_after: std::time::Duration::from_secs_f64(replug),
+            })
+        }
+    };
+
+    let mut radio = create_backend(use_mock, mock_level_dbm, failure)?;
 
     // Take the IQ stream before connecting to the receiver, so that the
     // consumer thread is ready before the first IQ blocks arrive.
@@ -434,6 +500,8 @@ fn main() -> Result<()> {
     );
     log::info!("Ready: waiting for RTL-TCP commands...");
 
+    let mut recovery: Option<Recovery> = None;
+
     loop {
         if !running.load(Ordering::SeqCst) {
             break;
@@ -441,6 +509,57 @@ fn main() -> Result<()> {
 
         // Acknowledge ADC overloads (outside the API callbacks).
         radio.service();
+
+        // Receiver lost (unplugged, failed, silent): keep trying to bring it back.
+        match recovery.as_mut() {
+            None => {
+                if let Health::Lost(reason) = radio.health() {
+                    log::error!(
+                        "receiver lost: {}; trying to recover every {} s",
+                        reason,
+                        RECOVERY_INTERVAL.as_secs()
+                    );
+
+                    recovery = Some(Recovery {
+                        lost_at: std::time::Instant::now(),
+                        next_attempt: std::time::Instant::now() + std::time::Duration::from_secs(1),
+                        attempts: 0,
+                    });
+                }
+            }
+
+            Some(state) if std::time::Instant::now() >= state.next_attempt => {
+                state.attempts += 1;
+
+                match radio.recover() {
+                    Ok(()) => {
+                        log::info!(
+                            "receiver recovered after {:.1} s ({} attempt{}): settings re-applied",
+                            state.lost_at.elapsed().as_secs_f64(),
+                            state.attempts,
+                            if state.attempts == 1 { "" } else { "s" }
+                        );
+
+                        // The receiver delivers the rate of the core's state again.
+                        requested_sample_rate
+                            .store(receiver.state().sample_rate, Ordering::Relaxed);
+                        recovery = None;
+                    }
+
+                    Err(e) => {
+                        if state.attempts == 1 || state.attempts % 10 == 0 {
+                            log::warn!("recovery attempt {} failed: {}", state.attempts, e);
+                        } else {
+                            log::debug!("recovery attempt {} failed: {}", state.attempts, e);
+                        }
+
+                        state.next_attempt = std::time::Instant::now() + RECOVERY_INTERVAL;
+                    }
+                }
+            }
+
+            Some(_) => {}
+        }
 
         match rtltcp_commands.try_recv() {
             Ok(command) => {
@@ -460,6 +579,12 @@ fn main() -> Result<()> {
                             if let Command::SetSampleRate(rate) = core_command {
                                 requested_sample_rate.store(rate, Ordering::Relaxed);
                             }
+                        }
+                        // While the receiver is lost every command fails: the core's
+                        // state (and the backend's memory) keep the client's choice,
+                        // applied again once the receiver is back.
+                        Err(e) if recovery.is_some() => {
+                            log::debug!("command kept for later (receiver lost): {}", e)
                         }
                         Err(e) => log::warn!("Core command failed: {}", e),
                     }

@@ -12,6 +12,8 @@ use crate::core::capabilities::DEFAULT_AGC_SETPOINT_DBFS;
 use crate::core::{rates, Event, IfType, IqBlock, IqReblocker, IqSample, LoMode};
 
 use crate::backend::gain;
+use crate::backend::replay::DesiredSettings;
+use crate::backend::Health;
 use gain::Band;
 use std::time::Instant;
 
@@ -19,6 +21,19 @@ const MAX_DEVICES: usize = 16;
 const MAX_SER_NO_LEN: usize = 64;
 
 static IQ_CALLBACK_RECEIVED: AtomicBool = AtomicBool::new(false);
+/// No IQ callback for this long while the stream should be running means the
+/// receiver is stuck: it is treated as lost and recovered.
+const IQ_WATCHDOG_MS: u64 = 5_000;
+
+/// Gain band assumed before any client chose a frequency (200 MHz).
+const INITIAL_BAND_HZ: u64 = 200_000_000;
+
+/// Milliseconds on a monotonic clock, never 0 (0 means "never" in the context).
+fn now_ms() -> u64 {
+    static CLOCK: OnceLock<Instant> = OnceLock::new();
+    CLOCK.get_or_init(Instant::now).elapsed().as_millis() as u64 + 1
+}
+
 static IQ_CALLBACK_COUNT: AtomicU64 = AtomicU64::new(0);
 
 #[repr(C)]
@@ -316,6 +331,13 @@ struct CallbackContext {
     overload_events: AtomicU64,
     /// Set by the stream callback when the service reports a sample-rate change.
     fs_changed: AtomicBool,
+    /// Set by the event callback when the service reports the receiver removed
+    /// or failed.
+    device_lost: AtomicBool,
+    /// Time of the last IQ callback (`now_ms`), 0 = none yet.
+    last_iq_ms: AtomicU64,
+    /// Time the IQ stream was started (`now_ms`), 0 = not started.
+    iq_started_ms: AtomicU64,
 }
 
 const _: () = {
@@ -619,6 +641,9 @@ unsafe extern "C" fn stream_a_callback(
     if !context.iq_enabled.load(Ordering::Relaxed) {
         return;
     }
+
+    context.last_iq_ms.store(now_ms(), Ordering::Relaxed);
+
     let callback_count = IQ_CALLBACK_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
 
     if !params.is_null() && (*params).fs_changed != 0 {
@@ -849,6 +874,18 @@ unsafe extern "C" fn event_callback(
         );
     }
 
+    // sdrplay_api_DeviceRemoved = 2, sdrplay_api_DeviceFailure = 4
+    if (event_id == 2 || event_id == 4) && !cb_context.is_null() {
+        let context = &*(cb_context as *const CallbackContext);
+
+        context.device_lost.store(true, Ordering::Relaxed);
+
+        log::error!(
+            "SDRplay API: device {}",
+            if event_id == 2 { "removed" } else { "failure" }
+        );
+    }
+
     // sdrplay_api_PowerOverloadChange = 1
     // The service sends no further overload message until the previous one has
     // been acknowledged (sdrplay_api_Update_Ctrl_OverloadMsgAck): the
@@ -888,7 +925,14 @@ pub struct SdrplayBackend {
     agc_on: bool,
     /// Hardware AGC set-point, in dBFS (changed by rsp_tcp command 0x23).
     agc_setpoint_dbfs: i32,
+    /// The gain was last chosen with the LNA state / IF gain reduction directly
+    /// (rsp_tcp extended), not as a step of the 29-step scale.
+    direct_gain: bool,
     last_overload_log: Instant,
+    /// Settings applied so far, re-applied after a recovery.
+    desired: DesiredSettings,
+    /// Why the receiver is considered lost, until it is recovered.
+    lost: Option<String>,
 }
 
 impl SdrplayBackend {
@@ -913,6 +957,9 @@ impl SdrplayBackend {
             overload_ack_pending: AtomicBool::new(false),
             overload_events: AtomicU64::new(0),
             fs_changed: AtomicBool::new(false),
+            device_lost: AtomicBool::new(false),
+            last_iq_ms: AtomicU64::new(0),
+            iq_started_ms: AtomicU64::new(0),
         });
 
         Self {
@@ -924,10 +971,13 @@ impl SdrplayBackend {
             iq_rx: Some(iq_rx),
             callback_context: Some(callback_context),
             gain_mode: crate::core::GainMode::Manual,
-            band: Band::from_hz(200_000_000),
+            band: Band::from_hz(INITIAL_BAND_HZ),
             gain_index: gain::DEFAULT_GAIN_INDEX,
             agc_on: false,
             agc_setpoint_dbfs: DEFAULT_AGC_SETPOINT_DBFS,
+            direct_gain: false,
+            desired: DesiredSettings::new(),
+            lost: None,
             last_overload_log: Instant::now(),
         }
     }
@@ -942,6 +992,8 @@ impl SdrplayBackend {
             .as_ref()
             .ok_or_else(|| anyhow!("IQ callback context missing"))?;
 
+        context.last_iq_ms.store(0, Ordering::Relaxed);
+        context.iq_started_ms.store(now_ms(), Ordering::Relaxed);
         context.iq_enabled.store(true, Ordering::Relaxed);
         log::info!("IQ stream started");
 
@@ -960,7 +1012,113 @@ impl SdrplayBackend {
         Ok(())
     }
 
+    /// Applies an event and remembers it. While the receiver is lost nothing
+    /// can be applied, but the setting is still remembered: it is applied when
+    /// the receiver is back.
     pub fn apply_event(&mut self, event: &Event) -> Result<()> {
+        if self.lost.is_some() {
+            self.desired.record(event);
+            return Err(anyhow!("receiver lost: setting kept for later"));
+        }
+
+        let result = self.apply_event_inner(event);
+
+        let device_gone = self
+            .callback_context
+            .as_ref()
+            .map(|context| context.device_lost.load(Ordering::Relaxed))
+            .unwrap_or(false);
+
+        // A failure caused by the receiver disappearing must not lose the setting.
+        if result.is_ok() || device_gone {
+            self.desired.record(event);
+        }
+
+        result
+    }
+
+    /// Whether the receiver is still there: the service reported it removed or
+    /// failed, or the running stream went silent.
+    pub fn health(&mut self) -> Health {
+        if let Some(reason) = &self.lost {
+            return Health::Lost(reason.clone());
+        }
+
+        let Some(context) = self.callback_context.as_ref() else {
+            return Health::Healthy;
+        };
+
+        let reason = if context.device_lost.load(Ordering::Relaxed) {
+            Some("device removed or failed (reported by the SDRplay service)".to_string())
+        } else if context.iq_enabled.load(Ordering::Relaxed) && self.initialized {
+            let last = context.last_iq_ms.load(Ordering::Relaxed);
+            let reference = if last > 0 {
+                last
+            } else {
+                context.iq_started_ms.load(Ordering::Relaxed)
+            };
+
+            if reference > 0 && now_ms().saturating_sub(reference) > IQ_WATCHDOG_MS {
+                Some(format!(
+                    "no IQ data for {} s while the stream is running",
+                    IQ_WATCHDOG_MS / 1000
+                ))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        match reason {
+            Some(reason) => {
+                self.lost = Some(reason.clone());
+                Health::Lost(reason)
+            }
+            None => Health::Healthy,
+        }
+    }
+
+    /// Tears the session down, opens the receiver again and re-applies the
+    /// settings that were in effect. Called repeatedly until it succeeds.
+    pub fn recover(&mut self) -> Result<()> {
+        self.close_session();
+
+        if let Some(context) = self.callback_context.as_ref() {
+            context.device_lost.store(false, Ordering::Relaxed);
+            context.last_iq_ms.store(0, Ordering::Relaxed);
+            context.iq_started_ms.store(0, Ordering::Relaxed);
+            context.iq_enabled.store(false, Ordering::Relaxed);
+            context.overload.store(false, Ordering::Relaxed);
+            context.overload_ack_pending.store(false, Ordering::Relaxed);
+            context.fs_changed.store(false, Ordering::Relaxed);
+        }
+
+        // A receiver that has just been opened has its default settings.
+        self.band = Band::from_hz(INITIAL_BAND_HZ);
+        self.gain_index = gain::DEFAULT_GAIN_INDEX;
+        self.gain_mode = crate::core::GainMode::Manual;
+        self.agc_on = false;
+        self.agc_setpoint_dbfs = DEFAULT_AGC_SETPOINT_DBFS;
+        self.direct_gain = false;
+
+        self.connect()?;
+
+        for event in self.desired.settings() {
+            if let Err(e) = self.apply_event_inner(&event) {
+                log::warn!("could not re-apply {:?}: {}", event, e);
+            }
+        }
+
+        if self.desired.stream_wanted() {
+            self.start_iq()?;
+        }
+
+        self.lost = None;
+        Ok(())
+    }
+
+    fn apply_event_inner(&mut self, event: &Event) -> Result<()> {
         match event {
             Event::FrequencyChanged(frequency_hz) => {
                 let old_band = self.band;
@@ -968,15 +1126,25 @@ impl SdrplayBackend {
                 self.set_frequency(*frequency_hz)?;
 
                 // The meaning of an LNAstate changes with the band: re-apply the gain step
-                // with the new band's table.
+                // with the new band's table. A client that chose the LNA state and the
+                // IF gain reduction itself keeps them (the LNA state was already
+                // brought down to what the new band allows).
                 if self.band != old_band {
-                    log::info!(
-                        "Band change {:?} -> {:?}: gain re-applied (step {})",
-                        old_band,
-                        self.band,
-                        self.gain_index
-                    );
-                    self.set_gain_index(self.gain_index)?;
+                    if self.direct_gain {
+                        log::info!(
+                            "Band change {:?} -> {:?}: direct gain kept",
+                            old_band,
+                            self.band
+                        );
+                    } else {
+                        log::info!(
+                            "Band change {:?} -> {:?}: gain re-applied (step {})",
+                            old_band,
+                            self.band,
+                            self.gain_index
+                        );
+                        self.set_gain_index(self.gain_index)?;
+                    }
                 }
             }
 
@@ -1104,7 +1272,7 @@ impl SdrplayBackend {
             let result = sdrplay_api_ApiVersion(&mut api_version);
 
             if result != 0 {
-                self.disconnect();
+                self.close_session();
 
                 return Err(anyhow!("sdrplay_api_ApiVersion() failed: {}", result));
             }
@@ -1112,7 +1280,7 @@ impl SdrplayBackend {
             log::info!("SDRplay API version: {:.2}", api_version);
 
             if let Err(err) = self.select_first_device() {
-                self.disconnect();
+                self.close_session();
 
                 return Err(err);
             }
@@ -2009,6 +2177,7 @@ impl SdrplayBackend {
         }
 
         self.gain_index = index;
+        self.direct_gain = false;
 
         // Like rsp_tcp: after an LNAstate change, re-apply the AGC configuration
         // (the AGC takes control of gRdB again).
@@ -2056,6 +2225,8 @@ impl SdrplayBackend {
                 applied = (gain.lna_state, gain.gr_db);
                 before != applied
             })?;
+
+        self.direct_gain = true;
 
         if changed {
             log::info!(
@@ -2228,6 +2399,10 @@ impl SdrplayBackend {
     /// To be called regularly from the main loop (outside the API callbacks):
     /// acknowledges overload messages and reports ADC overloads.
     pub fn service(&mut self) {
+        if self.lost.is_some() {
+            return;
+        }
+
         let ack = match self.callback_context.as_ref() {
             Some(context) => context.overload_ack_pending.swap(false, Ordering::Relaxed),
             None => return,
@@ -2356,7 +2531,15 @@ impl SdrplayBackend {
 
         Ok(())
     }
+    /// Final shutdown: closes the session and drops the callback context.
     pub fn disconnect(&mut self) {
+        self.close_session();
+        self.callback_context = None;
+    }
+
+    /// Closes the API session (best effort), keeping the callback context so
+    /// that a later `connect()` can resume the IQ stream to the same consumer.
+    fn close_session(&mut self) {
         if !self.connected {
             return;
         }
@@ -2399,7 +2582,6 @@ impl SdrplayBackend {
         self.device_selected = false;
         self.initialized = false;
         self.serial = None;
-        self.callback_context = None;
     }
 }
 
@@ -2422,6 +2604,14 @@ impl Backend for SdrplayBackend {
     fn service(&mut self) {
         SdrplayBackend::service(self)
     }
+
+    fn health(&mut self) -> Health {
+        SdrplayBackend::health(self)
+    }
+
+    fn recover(&mut self) -> Result<()> {
+        SdrplayBackend::recover(self)
+    }
 }
 
 impl Drop for SdrplayBackend {
@@ -2429,3 +2619,6 @@ impl Drop for SdrplayBackend {
         self.disconnect();
     }
 }
+
+#[cfg(test)]
+mod layout_tests;

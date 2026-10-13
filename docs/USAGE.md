@@ -160,6 +160,26 @@ A client that wants another width sends it **after** the rate (rtl_tcp command `
 sent by recent AbracaDABra versions). The request is rounded **up** to a supported
 width, but never above the widest one that fits the current rate.
 
+## If the receiver is lost
+
+The gateway notices when the RSP stops delivering, and brings it back by itself:
+
+- **Detection.** Either the SDRplay service reports the device removed or failed (log:
+  `SDRplay API: device removed`), or the stream goes **silent**: no IQ data for 5 seconds
+  while it should be running (for example a hung USB device). The log then says
+  `receiver lost: …` at ERROR level.
+- **Recovery.** One second later, then every 2 seconds, the gateway closes the API session,
+  opens the receiver again and **re-applies everything clients had chosen**: sample rate,
+  bandwidth, frequency, gain (step, or LNA state and IF gain reduction), AGC and its
+  set-point, notch filters, bias-T and frequency correction. The IQ stream restarts if it was
+  running. The log shows `recovery attempt N failed` (the first one, then every tenth, at
+  WARN level) and finally `receiver recovered after … s`.
+- **Clients stay connected.** They simply receive no data while the receiver is away. A
+  command they send during that time is not refused: it is kept, and applied once the
+  receiver is back, so the receiver ends up as the client left it.
+- **Starting without a receiver** is still an error: the gateway stops at start-up with
+  `No SDRplay device detected` rather than waiting.
+
 ## Reading the log
 
 Log lines go to **stderr** (use `2>&1` to pipe them), one per line, with a UTC
@@ -206,6 +226,10 @@ The messages to look for:
 | `RSP-TCP extended server listening on … (16-bit samples)` | INFO | The rsp_tcp server started. |
 | `… client connected: waiting for the active session to end` | INFO | Another client is active: this one waits. |
 | `client too slow: dropping IQ blocks (n so far)` | WARN | A client does not read fast enough; its oldest blocks are dropped. |
+| `receiver lost: …` | ERROR | The receiver was unplugged, failed, or stopped delivering data. |
+| `recovery attempt N failed: …` | WARN | The receiver is still not back (logged for the first attempt, then every tenth). |
+| `receiver recovered after … s (N attempts): settings re-applied` | INFO | The receiver is back and set as clients left it. |
+| `SDRplay API: device removed` / `device failure` | ERROR | Event reported by the SDRplay service. |
 | `GAIN: band=… direct LNA=… gRdB=…` | INFO | LNA state or IF gain reduction set directly (rsp_tcp extended). |
 | `RSP1B AGC set-point: … dBFS` | INFO | AGC set-point changed (rsp_tcp extended). |
 | `Core command failed: …` | WARN | A command from a client was refused (for example a value out of range). |
